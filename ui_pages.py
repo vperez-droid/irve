@@ -204,7 +204,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     # --- [CAMBIO CLAVE] SECCIÓN DE RESULTADOS AHORA MUESTRA UN BOTÓN DE DESCARGA ---
     if 'analysis_doc_buffer' in st.session_state and st.session_state.analysis_doc_buffer:
         st.success("El análisis se ha completado. Ya puedes descargar el informe.")
-        st.download_button(
+        st.download_button("El análisis se ha completado. Ya puedes descargar el informe.")
             label="📄 Descargar Informe de Viabilidad (.docx)",
 # =============================================================================
 # =============================================================================
