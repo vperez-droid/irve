@@ -461,8 +461,10 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     
 # Reemplaza tu función phase_3_page en ui_pages.py con esta versión más robusta
 
+# Reemplaza tu función phase_3_page en ui_pages.py con esta versión completa
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
-    USE_GPT_MODEL = True
+    USE_GPT_MODEL = False # PUESTO EN FALSE PARA USAR GEMINI
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
     st.markdown("---")
@@ -479,7 +481,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.rerun()
             else:
                 st.warning("No se ha encontrado un índice guardado. Por favor, vuelve a la Fase 2 para generar uno.")
-                if st.button("← Ir a Fase 2"): go_to_phase2_results(); st.rerun() # Corregido para ir a F2-Resultados
+                if st.button("← Ir a Fase 2"): go_to_phase2_results(); st.rerun()
                 return
         except Exception as e:
             st.error(f"Error al cargar el índice desde Drive: {e}")
@@ -490,13 +492,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
     if not estructura: st.error("La estructura JSON no contiene la clave 'estructura_memoria'."); return
     
-    # --- [BLOQUE DE LÓGICA MEJORADO] ---
     subapartados_a_mostrar = []
-    # Comprobamos si CUALQUIER sección del índice tiene subapartados
     hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
 
     if hay_subapartados:
-        # LÓGICA ORIGINAL: Si hay subapartados, los mostramos
         for seccion in estructura:
             apartado_principal = seccion.get('apartado', 'Sin Título')
             for subapartado_titulo in seccion.get('subapartados', []):
@@ -504,22 +503,18 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 if matiz_existente: subapartados_a_mostrar.append(matiz_existente)
                 else: subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
     else:
-        # LÓGICA NUEVA: Si NO hay subapartados, usamos los apartados principales
         st.info("El índice no contiene subapartados. Se mostrarán los apartados principales para la generación de guiones.")
         for seccion in estructura:
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo:
-                # Simulamos la estructura que el resto de la página espera, usando el título del apartado
                 subapartados_a_mostrar.append({
                     "apartado": apartado_titulo,
-                    "subapartado": apartado_titulo, # Usamos el mismo título para la clave 'subapartado'
+                    "subapartado": apartado_titulo,
                     "indicaciones": f"Generar guion para el apartado principal: {apartado_titulo}"
                 })
-    # --- [FIN DEL BLOQUE MEJORADO] ---
 
     if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
-    # El resto de la función no necesita cambios...
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, show_toast=True):
         nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", titulo)
         nombre_archivo = nombre_limpio + ".docx"
@@ -530,17 +525,27 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
             pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
-            contenido_ia = [PROMPT_PREGUNTAS_TECNICAS_INDIVIDUAL]
+            
+            # --- [CAMBIO CLAVE] ---
+            # Usamos el nuevo prompt para Gemini que genera el guion en formato Markdown
+            idioma_seleccionado = st.session_state.get('project_language', 'Español')
+            prompt_con_idioma = PROMPT_GEMINI_GUION_PLANIFICACION.format(idioma=idioma_seleccionado)
+            contenido_ia = [prompt_con_idioma]
+            
+            # El resto del contexto se añade igual que antes
             contenido_ia.append("--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False))
+            
             for file_info in pliegos_en_drive:
                 file_content_bytes = download_file_from_drive(service, file_info['id'])
                 contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
+            
             doc_extra_key = f"upload_{titulo}"
             if doc_extra_key in st.session_state and st.session_state[doc_extra_key]:
+                contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
                 for uploaded_file in st.session_state[doc_extra_key]:
-                    contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
                     contenido_ia.append({"mime_type": uploaded_file.type, "data": uploaded_file.getvalue()})
                     upload_file_to_drive(service, uploaded_file, subapartado_guion_folder_id)
+            
             response = model.generate_content(contenido_ia)
             documento = docx.Document()
             agregar_markdown_a_word(documento, response.text)
@@ -553,6 +558,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             if show_toast: st.toast(f"Borrador (Gemini) para '{titulo}' generado y guardado.")
             return True
         except Exception as e: st.error(f"Error al generar con Gemini para '{titulo}': {e}"); return False
+        
     def ejecutar_generacion_con_gpt(titulo, indicaciones_completas, show_toast=True):
         try: client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         except Exception: st.error("Error: 'OPENAI_API_KEY' no encontrada en secrets.toml."); return False
@@ -575,7 +581,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 contexto_para_gpt += f"**Inicio del documento: {file_info['name']}**\n{texto_extraido}\n**Fin del documento: {file_info['name']}**\n\n"
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
             prompt_sistema_formateado = PROMPT_GPT_TABLA_PLANIFICACION.format(idioma=idioma_seleccionado)
-            response = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "system", "content": PROMPT_GPT_TABLA_PLANIFICACION}, {"role": "user", "content": contexto_para_gpt}], temperature=0.2)
+            response = client.chat.completions.create(model="gpt-4o-mini", messages=[{"role": "system", "content": prompt_sistema_formateado}, {"role": "user", "content": contexto_para_gpt}], temperature=0.2)
             guion_generado = response.choices[0].message.content
             guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
             subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
@@ -587,18 +593,23 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             if show_toast: st.toast(f"Borrador (GPT) para '{titulo}' generado y guardado.")
             return True
         except Exception as e: st.error(f"Error al generar con GPT para '{titulo}': {e}"); return False
+
     def ejecutar_regeneracion(titulo, file_id_borrador): st.warning(f"La función de re-generación para '{titulo}' aún no está implementada.")
     def ejecutar_borrado(titulo, folder_id_to_delete): st.warning(f"La función de borrado para '{titulo}' aún no está implementada.")
+
     with st.spinner("Sincronizando con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
         carpetas_existentes_response = get_files_in_project(service, guiones_folder_id)
         carpetas_de_guiones_existentes = {f['name']: f['id'] for f in carpetas_existentes_response if f['mimeType'] == 'application/vnd.google-apps.folder'}
         nombres_carpetas_existentes = set(carpetas_de_guiones_existentes.keys())
+
     st.subheader("Generación de Borradores en Lote")
     pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if re.sub(r'[\\/*?:"<>|]', "", matiz.get('subapartado')) not in nombres_carpetas_existentes]
+    
     def toggle_all_checkboxes():
-        new_state = st.session_state.select_all_checkbox
+        new_state = st.session_state.get('select_all_checkbox', False)
         for key in pending_keys: st.session_state[f"cb_{key}"] = new_state
+
     with st.container(border=True):
         col_sel_1, col_sel_2 = st.columns([1, 2])
         with col_sel_1: st.checkbox("Seleccionar Todos / Ninguno", key="select_all_checkbox", on_change=toggle_all_checkboxes, disabled=not pending_keys)
@@ -615,6 +626,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     if USE_GPT_MODEL: ejecutar_generacion_con_gpt(titulo, matiz_a_generar, show_toast=False)
                     else: ejecutar_generacion_con_gemini(model, titulo, matiz_a_generar, show_toast=False)
                 progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons(); time.sleep(2); st.rerun()
+    
     st.markdown("---")
     st.subheader("Gestión de Guiones de Subapartados")
     for i, matiz in enumerate(subapartados_a_mostrar):
