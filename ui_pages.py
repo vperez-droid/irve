@@ -662,6 +662,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     with col_nav2: 
         st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
         
+# Reemplaza tu función phase_4_page en ui_pages.py con esta versión corregida
+
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
@@ -679,8 +681,8 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             st.session_state.generated_structure = json.loads(index_content_bytes.getvalue().decode('utf-8'))
             st.rerun()
         else:
-            st.warning("No se ha encontrado un índice. Vuelve a Fase 1 para generarlo.")
-            if st.button("← Ir a Fase 2"): go_to_phase1(); st.rerun()
+            st.warning("No se ha encontrado un índice. Vuelve a Fase 2 para generarlo.")
+            if st.button("← Ir a Fase 2"): go_to_phase2_results(); st.rerun()
             return
 
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
@@ -689,17 +691,36 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
 
     if not estructura: st.error("La estructura JSON no contiene la clave 'estructura_memoria'."); return
 
+    # --- [BLOQUE DE LÓGICA MEJORADO] ---
     subapartados_a_mostrar = []
-    for seccion in estructura:
-        apartado_principal = seccion.get('apartado', 'Sin Título')
-        for subapartado_titulo in seccion.get('subapartados', []):
-            matiz_existente = matices_dict.get(subapartado_titulo)
-            if matiz_existente:
-                subapartados_a_mostrar.append(matiz_existente)
-            else:
-                subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
+    # Comprobamos si CUALQUIER sección del índice tiene subapartados
+    hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
+
+    if hay_subapartados:
+        # LÓGICA ORIGINAL: Si hay subapartados, los mostramos
+        for seccion in estructura:
+            apartado_principal = seccion.get('apartado', 'Sin Título')
+            for subapartado_titulo in seccion.get('subapartados', []):
+                matiz_existente = matices_dict.get(subapartado_titulo)
+                if matiz_existente:
+                    subapartados_a_mostrar.append(matiz_existente)
+                else:
+                    subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
+    else:
+        # LÓGICA NUEVA: Si NO hay subapartados, usamos los apartados principales
+        st.info("El índice no contiene subapartados. Se mostrarán los apartados principales para la generación de prompts.")
+        for seccion in estructura:
+            apartado_titulo = seccion.get('apartado')
+            if apartado_titulo:
+                # Simulamos la estructura que el resto de la página espera
+                subapartados_a_mostrar.append({
+                    "apartado": apartado_titulo,
+                    "subapartado": apartado_titulo, # Usamos el mismo título para la clave 'subapartado'
+                    "indicaciones": f"Generar prompts para el apartado principal: {apartado_titulo}"
+                })
+    # --- [FIN DEL BLOQUE MEJORADO] ---
     
-    if not subapartados_a_mostrar: st.warning("El índice no contiene subapartados."); return
+    if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
     def handle_individual_generation(matiz_info, callback_model, show_toast=True):
         apartado_titulo = matiz_info.get("apartado", "N/A")
@@ -728,37 +749,29 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             pliegos_content_for_ia = [{"mime_type": f['mimeType'], "data": download_file_from_drive(service, f['id']).getvalue()} for f in pliegos_files_info]
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
             
-            # ===== INICIO DE LA LÓGICA DE CONTEXTO ESTRATÉGICO (MODIFICADO) =====
-            # 1. Obtenemos la estructura estratégica completa de la sesión
             full_structure = st.session_state.generated_structure
             config_licitacion = full_structure.get('configuracion_licitacion', {})
             plan_extension = full_structure.get('plan_extension', [])
 
-            # 2. Buscamos las páginas sugeridas para el SUBAPARTADO específico
-            paginas_sugeridas_subapartado = "No especificado" # El valor que realmente necesitamos
+            paginas_sugeridas_subapartado = "No especificado"
             if plan_extension:
-                # Primero, encontramos el apartado principal correcto
                 for item_apartado in plan_extension:
                     if item_apartado.get('apartado') == apartado_titulo:
-                        # Ahora, buscamos en el desglose de ese apartado
                         desglose = item_apartado.get('desglose_subapartados', [])
                         for item_subapartado in desglose:
                             if item_subapartado.get('subapartado') == subapartado_titulo:
                                 paginas_sugeridas_subapartado = item_subapartado.get('paginas_sugeridas', 'No especificado')
-                                break # Encontramos el subapartado, salimos del bucle interior
-                        break # Encontramos el apartado, salimos del bucle exterior
+                                break
+                        break
 
-            # 3. Formateamos el nuevo prompt con la información ESTRATÉGICA Y PRECISA
             prompt_final = PROMPT_DESARROLLO.format(
                 idioma=idioma_seleccionado,
                 max_paginas=config_licitacion.get('max_paginas', 'N/D'),
                 reglas_formato=config_licitacion.get('reglas_formato', 'No especificado'),
                 apartado_referencia=apartado_titulo,
-                # NOTA: pasamos el valor específico del subapartado
                 paginas_sugeridas_subapartado=paginas_sugeridas_subapartado, 
                 subapartado_referencia=subapartado_titulo
             )
-            # ===== FIN DE LA LÓGICA DE CONTEXTO ESTRATÉGICO =====
 
             contenido_ia = [prompt_final] + pliegos_content_for_ia
             if contexto_adicional_str:
@@ -850,7 +863,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
     ]
 
     def toggle_all_prompt_checkboxes():
-        new_state = st.session_state.select_all_prompts_checkbox
+        new_state = st.session_state.get('select_all_prompts_checkbox', False)
         for key in pending_keys:
             st.session_state[f"pcb_{key}"] = new_state
 
@@ -899,7 +912,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                     st.write(f"**{subapartado_titulo}**")
                 
                 if not guion_generado:
-                    st.warning("⚠️ Guion no generado en Fase 2. No se puede crear un plan.")
+                    st.warning("⚠️ Guion no generado en Fase 3. No se puede crear un plan.")
                 elif plan_individual_id:
                     st.success("✔️ Plan generado")
                     with st.expander("Ver / Descargar Plan Individual"):
@@ -924,14 +937,10 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
 
     st.markdown("---")
     st.button("🚀 Unificar y Guardar Plan de Prompts Conjunto", on_click=handle_conjunto_generation, use_container_width=True, type="primary", help="Unifica todos los planes individuales generados en un único archivo maestro.")
-    
-    # --- [BLOQUE CORREGIDO] ---
     col_nav3_1, col_nav3_2 = st.columns(2)
     with col_nav3_1:
-        # El botón de volver a F3 ahora usa la función correcta: go_to_phase3
         st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase3, use_container_width=True)
     with col_nav3_2:
-        # El botón de ir a F5 ahora usa la función correcta: go_to_phase5
         st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
 
 def phase_5_page(model, go_to_phase4, go_to_phase6):
