@@ -102,63 +102,83 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 # Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión para Gemini
 
+# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión que lee desde Google Drive
+
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
-    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad (con Gemini)</h3>", unsafe_allow_html=True)
-    st.info("Ahora esta fase utiliza el modelo de Gemini para analizar los documentos y generar un informe .docx.")
+    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad desde Google Drive</h3>", unsafe_allow_html=True)
 
-    # --- Lógica de carga de archivos (sin cambios) ---
+    # --- 1. Verificación de sesión y conexión con Drive ---
+    if not st.session_state.get('selected_project'):
+        st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
+        if st.button("← Ir a Selección de Proyecto"):
+            go_to_project_selection()
+            st.rerun()
+        st.stop()
+    
+    project_name = st.session_state.selected_project['name']
+    project_folder_id = st.session_state.selected_project['id']
+    service = st.session_state.drive_service
+    
+    st.info(f"Proyecto activo: **{project_name}**. Se analizarán los documentos de la carpeta 'Pliegos'.")
+
+    # --- 2. Mostrar archivos de la carpeta 'Pliegos' y permitir subir nuevos ---
     with st.container(border=True):
-        st.subheader("1. Sube los Pliegos")
-        uploaded_files = st.file_uploader(
-            "Arrastra aquí los archivos PDF o DOCX para analizar",
-            type=['pdf', 'docx'],
-            accept_multiple_files=True,
-            key="local_file_uploader"
-        )
-        if uploaded_files:
-            st.session_state.local_pliegos = uploaded_files
-        if 'local_pliegos' not in st.session_state:
-            st.session_state.local_pliegos = []
+        st.subheader("1. Documentos en tu Proyecto")
+        
+        with st.spinner("Buscando archivos en Google Drive..."):
+            pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
+            # Guardamos los archivos encontrados en el estado para no recargarlos constantemente
+            st.session_state.pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
 
-    if st.session_state.local_pliegos:
-        st.success("Archivos cargados y listos para analizar:")
-        for i, file in enumerate(st.session_state.local_pliegos):
-            cols = st.columns([4, 1])
-            cols[0].write(f"📄 **{file.name}**")
-            if cols[1].button("Eliminar", key=f"del_local_{i}"):
-                st.session_state.local_pliegos.pop(i)
-                if 'analysis_doc_buffer' in st.session_state:
-                    del st.session_state['analysis_doc_buffer']
-                st.rerun()
-    else:
-        st.info("Sube uno o más archivos para empezar.")
+        if st.session_state.pliegos_en_drive:
+            st.success("Se analizarán los siguientes archivos encontrados en la carpeta 'Pliegos':")
+            for file_info in st.session_state.pliegos_en_drive:
+                st.write(f"📄 **{file_info['name']}**")
+        else:
+            st.warning("No se encontraron archivos en la carpeta 'Pliegos'. Sube al menos un documento para continuar.")
+
+        # Opción para subir más archivos directamente a Drive
+        with st.expander("Subir nuevos documentos a 'Pliegos'"):
+            uploaded_files = st.file_uploader(
+                "Arrastra aquí los archivos que quieras añadir al proyecto",
+                type=['pdf', 'docx'],
+                accept_multiple_files=True,
+                key="drive_file_uploader"
+            )
+            if st.button("Guardar en Drive y Refrescar"):
+                if uploaded_files:
+                    with st.spinner("Subiendo archivos a Drive..."):
+                        for file_obj in uploaded_files:
+                            upload_file_to_drive(service, file_obj, pliegos_folder_id)
+                    st.toast("¡Archivos subidos! La lista se ha actualizado.")
+                    st.rerun()
 
     st.markdown("---")
     st.header("Extracción de Requisitos Clave")
     
-    # --- [LÓGICA ACTUALIZADA PARA USAR GEMINI] ---
-    if st.button("Analizar Pliegos y Generar Documento de Análisis", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
-        with st.spinner("🧠 Analizando documentos con Gemini y generando el informe .docx..."):
+    # --- 3. Lógica de análisis usando los archivos de Drive con Gemini ---
+    if st.button("Analizar Pliegos de Drive y Generar Documento", type="primary", use_container_width=True, disabled=not st.session_state.pliegos_en_drive):
+        with st.spinner("🧠 Descargando y analizando documentos con Gemini..."):
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
                 prompt_con_idioma = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
                 
-                # Preparamos el contenido para Gemini: prompt + archivos
                 contenido_ia = [prompt_con_idioma]
-                for file in st.session_state.local_pliegos:
-                    contenido_ia.append({"mime_type": file.type, "data": file.getvalue()})
+                # Descargamos cada archivo de Drive y lo preparamos para Gemini
+                for file_info in st.session_state.pliegos_en_drive:
+                    file_content_bytes_io = download_file_from_drive(service, file_info['id'])
+                    contenido_ia.append({
+                        "mime_type": file_info['mimeType'], 
+                        "data": file_content_bytes_io.getvalue()
+                    })
 
-                # Llamamos a la API de Gemini
                 response = model.generate_content(contenido_ia)
                 
                 if not response.candidates:
-                    st.error("Gemini no generó una respuesta. Puede deberse a un bloqueo de seguridad.")
-                    st.write("Feedback del Prompt:", response.prompt_feedback)
-                    st.stop()
+                    st.error("Gemini no generó una respuesta."); st.stop()
 
                 texto_analisis = response.text
                 
-                # Creamos el documento DOCX en memoria
                 documento = docx.Document()
                 agregar_markdown_a_word(documento, texto_analisis)
 
@@ -166,20 +186,16 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 documento.save(buffer)
                 buffer.seek(0)
 
-                # Guardamos el buffer en el estado de la sesión
                 st.session_state.analysis_doc_buffer = buffer
-                st.session_state.analysis_doc_filename = "Analisis_de_Viabilidad_Gemini.docx"
+                st.session_state.analysis_doc_filename = "Analisis_de_Viabilidad_Drive.docx"
                 
                 st.toast("✅ ¡Documento de análisis generado con éxito!")
-                st.rerun() # Hacemos un rerun para mostrar el botón de descarga inmediatamente
+                st.rerun()
 
             except Exception as e:
-                st.error(f"Ocurrió un error crítico durante el análisis con Gemini: {e}")
-                st.error(f"Tipo de error: {type(e).__name__}")
-                if 'analysis_doc_buffer' in st.session_state:
-                    del st.session_state['analysis_doc_buffer']
+                st.error(f"Ocurrió un error crítico durante el análisis: {e}")
 
-    # --- Sección de resultados con el botón de descarga (sin cambios) ---
+    # --- 4. Mostrar botón de descarga y permitir avanzar a la siguiente fase ---
     if 'analysis_doc_buffer' in st.session_state and st.session_state.analysis_doc_buffer:
         st.success("El análisis se ha completado. Ya puedes descargar el informe.")
         st.download_button(
@@ -190,8 +206,9 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             use_container_width=True
         )
         
-        st.info("Revisa el documento y, si todo es correcto, puedes continuar a la siguiente fase.")
+        st.info("Revisa el documento. Si todo es correcto, puedes continuar a la siguiente fase para generar la estructura de la memoria.")
         st.markdown("---")
+        # El botón clave para avanzar en el flujo de la aplicación
         st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
 
     st.write("")
