@@ -100,11 +100,11 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 
 
-# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión corregida
+# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión para Gemini
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
-    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad</h3>", unsafe_allow_html=True)
-    st.info("Ahora esta fase genera un documento .docx con el análisis para evitar errores de formato.")
+    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad (con Gemini)</h3>", unsafe_allow_html=True)
+    st.info("Ahora esta fase utiliza el modelo de Gemini para analizar los documentos y generar un informe .docx.")
 
     # --- Lógica de carga de archivos (sin cambios) ---
     with st.container(border=True):
@@ -127,7 +127,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             cols[0].write(f"📄 **{file.name}**")
             if cols[1].button("Eliminar", key=f"del_local_{i}"):
                 st.session_state.local_pliegos.pop(i)
-                # Limpiamos el buffer del documento si se elimina un archivo
                 if 'analysis_doc_buffer' in st.session_state:
                     del st.session_state['analysis_doc_buffer']
                 st.rerun()
@@ -137,46 +136,29 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown("---")
     st.header("Extracción de Requisitos Clave")
     
+    # --- [LÓGICA ACTUALIZADA PARA USAR GEMINI] ---
     if st.button("Analizar Pliegos y Generar Documento de Análisis", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
-        with st.spinner("🧠 Analizando documentos y generando el informe .docx..."):
-            try:
-                client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-            except Exception:
-                st.error("Error: 'OPENAI_API_KEY' no encontrada en los secretos de Streamlit."); st.stop()
-
-            contexto_documentos = ""
-            for file in st.session_state.local_pliegos:
-                try:
-                    bytes_data = file.getvalue()
-                    texto_extraido = ""
-                    if file.name.endswith('.pdf'):
-                        reader = PdfReader(io.BytesIO(bytes_data))
-                        texto_extraido = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
-                    elif file.name.endswith('.docx'):
-                        doc = docx.Document(io.BytesIO(bytes_data))
-                        texto_extraido = "\n".join(para.text for para in doc.paragraphs)
-                    contexto_documentos += f"--- DOCUMENTO: {file.name} ---\n{texto_extraido}\n--- FIN ---\n\n"
-                except Exception as e:
-                    st.warning(f"No se pudo procesar '{file.name}': {e}")
-            
-            if not contexto_documentos.strip():
-                st.error("No se pudo extraer texto de los documentos."); st.stop()
-
+        with st.spinner("🧠 Analizando documentos con Gemini y generando el informe .docx..."):
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                prompt_sistema = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
+                prompt_con_idioma = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
                 
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": prompt_sistema},
-                        {"role": "user", "content": contexto_documentos}
-                    ],
-                    temperature=0.2
-                )
+                # Preparamos el contenido para Gemini: prompt + archivos
+                contenido_ia = [prompt_con_idioma]
+                for file in st.session_state.local_pliegos:
+                    contenido_ia.append({"mime_type": file.type, "data": file.getvalue()})
+
+                # Llamamos a la API de Gemini
+                response = model.generate_content(contenido_ia)
                 
-                texto_analisis = response.choices[0].message.content
+                if not response.candidates:
+                    st.error("Gemini no generó una respuesta. Puede deberse a un bloqueo de seguridad.")
+                    st.write("Feedback del Prompt:", response.prompt_feedback)
+                    st.stop()
+
+                texto_analisis = response.text
                 
+                # Creamos el documento DOCX en memoria
                 documento = docx.Document()
                 agregar_markdown_a_word(documento, texto_analisis)
 
@@ -184,19 +166,20 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 documento.save(buffer)
                 buffer.seek(0)
 
+                # Guardamos el buffer en el estado de la sesión
                 st.session_state.analysis_doc_buffer = buffer
-                st.session_state.analysis_doc_filename = "Analisis_de_Viabilidad.docx"
+                st.session_state.analysis_doc_filename = "Analisis_de_Viabilidad_Gemini.docx"
                 
                 st.toast("✅ ¡Documento de análisis generado con éxito!")
+                st.rerun() # Hacemos un rerun para mostrar el botón de descarga inmediatamente
 
             except Exception as e:
-                st.error(f"Ocurrió un error crítico durante el análisis con OpenAI: {e}")
+                st.error(f"Ocurrió un error crítico durante el análisis con Gemini: {e}")
                 st.error(f"Tipo de error: {type(e).__name__}")
                 if 'analysis_doc_buffer' in st.session_state:
                     del st.session_state['analysis_doc_buffer']
 
-    # --- [BLOQUE CORREGIDO] ---
-    # La llamada a st.download_button ahora tiene la sintaxis correcta.
+    # --- Sección de resultados con el botón de descarga (sin cambios) ---
     if 'analysis_doc_buffer' in st.session_state and st.session_state.analysis_doc_buffer:
         st.success("El análisis se ha completado. Ya puedes descargar el informe.")
         st.download_button(
@@ -210,7 +193,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         st.info("Revisa el documento y, si todo es correcto, puedes continuar a la siguiente fase.")
         st.markdown("---")
         st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
-
 
     st.write("")
     st.markdown("---")
