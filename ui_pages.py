@@ -368,14 +368,19 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 
             if plan:
                 st.write("**Distribución de Contenido Sugerida (Páginas y Puntuación por Apartado):**")
-                df_plan = pd.DataFrame(plan)
-                column_rename_map = {
-                    'apartado': 'Apartado Principal',
-                    'paginas_sugeridas': 'Páginas Sugeridas',
-                    'puntuacion_sugerida': 'Puntuación / Peso'
-                }
-                df_plan_renamed = df_plan.rename(columns={k: v for k, v in column_rename_map.items() if k in df_plan.columns})
-                st.dataframe(df_plan_renamed, use_container_width=True, hide_index=True)
+                
+                # Preparamos los datos para el DataFrame
+                display_data = []
+                for item in plan:
+                    display_data.append({
+                        'Apartado Principal': item.get('apartado', 'N/A'),
+                        'Páginas Sugeridas': item.get('paginas_sugeridas_apartado', 'N/D'),
+                        'Puntuación / Peso': item.get('puntuacion_sugerida', 'N/D')
+                    })
+                
+                # Creamos el DataFrame y lo mostramos
+                df_display = pd.DataFrame(display_data)
+                st.dataframe(df_display, use_container_width=True, hide_index=True)
 
         st.markdown("---")
         st.subheader("Validación y Siguiente Paso")
@@ -418,6 +423,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     st.rerun()
                 except Exception as e:
                     st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
+                    
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     USE_GPT_MODEL = True
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
