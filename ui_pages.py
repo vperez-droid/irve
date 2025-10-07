@@ -101,12 +101,25 @@ def project_selection_page(go_to_landing, go_to_phase1):
 # En ui_pages.py, añade esta nueva función
 # En ui_pages.py, reemplaza tu función con esta versión que usa la lógica que YA FUNCIONA en tu app:
 
-# En tu archivo ui_pages.py
+# En tu archivo ui_pages.py, asegúrate de tener estas importaciones al principio
+import streamlit as st
+import json
+from openai import OpenAI # <--- IMPORTANTE: Añade OpenAI
+import io
+from pypdf import PdfReader
+import docx
+from prompts import PROMPT_REQUISITOS_CLAVE
+from utils import limpiar_respuesta_json
+
+# ... (el resto de tus importaciones) ...
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
-    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad</h3>", unsafe_allow_html=True)
+    # 'model' (Gemini) ya no se usa aquí, pero lo mantenemos por consistencia en la firma de la función
+    
+    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad (con OpenAI)</h3>", unsafe_allow_html=True)
+    st.info("Ahora esta fase utiliza el modelo de OpenAI (GPT) para el análisis.")
 
-    # --- SECCIÓN DE CARGA DE ARCHIVOS ---
+    # --- Lógica de carga de archivos (sin cambios) ---
     with st.container(border=True):
         st.subheader("1. Sube los Pliegos")
         uploaded_files = st.file_uploader(
@@ -115,17 +128,11 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             accept_multiple_files=True,
             key="local_file_uploader"
         )
-        
-        # [CORRECCIÓN 1]: Procesamos los archivos subidos sin forzar un st.rerun()
         if uploaded_files:
-            # Simplemente asignamos los archivos al estado. Streamlit se encarga del resto.
             st.session_state.local_pliegos = uploaded_files
-        
-        # Si no hay archivos en el uploader, pero sí en el estado (porque ya se subieron), los usamos.
         if 'local_pliegos' not in st.session_state:
             st.session_state.local_pliegos = []
 
-    # --- MOSTRAR ARCHIVOS CARGADOS Y PERMITIR BORRARLOS ---
     if st.session_state.local_pliegos:
         st.success("Archivos cargados y listos para analizar:")
         for i, file in enumerate(st.session_state.local_pliegos):
@@ -133,48 +140,72 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             cols[0].write(f"📄 **{file.name}**")
             if cols[1].button("Eliminar", key=f"del_local_{i}"):
                 st.session_state.local_pliegos.pop(i)
-                st.rerun() # Aquí sí es correcto usar rerun para refrescar la lista
+                st.rerun()
     else:
         st.info("Sube uno o más archivos para empezar.")
 
     st.markdown("---")
     st.header("Extracción de Requisitos Clave")
     
+    # --- LÓGICA DEL BOTÓN MODIFICADA PARA USAR OPENAI ---
     if st.button("Analizar Pliegos y Extraer Requisitos", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
-        with st.spinner("🧠 Analizando archivos con la IA..."):
-            response = None
+        with st.spinner("🧠 Analizando archivos con OpenAI (GPT)..."):
+            
+            # 1. Intentamos inicializar el cliente de OpenAI
+            try:
+                client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+            except Exception:
+                st.error("Error: 'OPENAI_API_KEY' no encontrada en los secretos de Streamlit (secrets.toml)."); st.stop()
+
+            # 2. Extraemos el texto de todos los archivos subidos
+            contexto_documentos = ""
+            for file in st.session_state.local_pliegos:
+                try:
+                    bytes_data = file.getvalue()
+                    texto_extraido = ""
+                    if file.name.endswith('.pdf'):
+                        reader = PdfReader(io.BytesIO(bytes_data))
+                        texto_extraido = "\n".join(page.extract_text() for page in reader.pages)
+                    elif file.name.endswith('.docx'):
+                        doc = docx.Document(io.BytesIO(bytes_data))
+                        texto_extraido = "\n".join(para.text for para in doc.paragraphs)
+                    
+                    contexto_documentos += f"--- INICIO DEL DOCUMENTO: {file.name} ---\n{texto_extraido}\n--- FIN DEL DOCUMENTO: {file.name} ---\n\n"
+                except Exception as e:
+                    st.warning(f"No se pudo procesar el archivo '{file.name}': {e}")
+            
+            if not contexto_documentos.strip():
+                st.error("No se pudo extraer texto de los documentos subidos. Asegúrate de que no estén vacíos o protegidos."); st.stop()
+
+            # 3. Hacemos la llamada a la API de OpenAI
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                prompt_con_idioma = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
-                contenido_ia = [prompt_con_idioma]
+                prompt_sistema = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
                 
-                for file in st.session_state.local_pliegos:
-                    contenido_ia.append({"mime_type": file.type, "data": file.getvalue()})
-
-                generation_config = {"response_mime_type": "application/json"}
-                response = model.generate_content(contenido_ia, generation_config=generation_config)
-
-                if not response.candidates:
-                    st.error("La IA no generó una respuesta. Puede deberse a un bloqueo de seguridad.")
-                    st.write("Feedback del Prompt:", response.prompt_feedback)
-                    st.stop()
+                response = client.chat.completions.create(
+                    model="gpt-4o-mini", # O el modelo que prefieras, ej: "gpt-4-turbo"
+                    response_format={"type": "json_object"}, # <--- Forzamos la salida a JSON
+                    messages=[
+                        {"role": "system", "content": prompt_sistema},
+                        {"role": "user", "content": contexto_documentos}
+                    ],
+                    temperature=0.1
+                )
                 
-                json_limpio_str = limpiar_respuesta_json(response.text)
-                if json_limpio_str:
-                    st.session_state.requisitos_extraidos = json.loads(json_limpio_str)
-                    st.toast("✅ ¡Requisitos extraídos con éxito!")
+                json_string_respuesta = response.choices[0].message.content
+                
+                if json_string_respuesta:
+                    st.session_state.requisitos_extraidos = json.loads(json_string_respuesta)
+                    st.toast("✅ ¡Requisitos extraídos con éxito usando OpenAI!")
                 else:
-                    st.error("La IA devolvió una respuesta vacía o no válida.")
+                    st.error("OpenAI devolvió una respuesta vacía.")
                     st.session_state.requisitos_extraidos = None
-                
+            
             except Exception as e:
-                st.error(f"Ocurrió un error crítico durante el proceso: {e}")
+                st.error(f"Ocurrió un error crítico durante el proceso con OpenAI: {e}")
                 st.error(f"Tipo de error: {type(e).__name__}")
-                if response:
-                    st.warning("La IA devolvió una respuesta que causó el error. Contenido:")
-                    st.code(response.text, language='text')
 
-    # --- SECCIÓN DE MOSTRAR RESULTADOS (A PRUEBA DE ERRORES) ---
+    # --- La sección de mostrar resultados no necesita cambios, ya es robusta ---
     if 'requisitos_extraidos' in st.session_state and st.session_state.requisitos_extraidos:
         requisitos = st.session_state.requisitos_extraidos
 
@@ -185,19 +216,14 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         
         with st.container(border=True):
             st.subheader("📊 Resumen de la Licitación")
-            
-            # [CORRECCIÓN 2]: Usar .get() para evitar el KeyError. Si no existe la clave, usa un diccionario vacío {}.
             resumen = requisitos.get('resumen_licitacion', {}) 
-
             col1, col2, col3 = st.columns(3)
-            # Usamos .get() de nuevo para cada métrica individual, por si faltan datos dentro del resumen.
             col1.metric("Presupuesto Base", resumen.get('presupuesto_base', 'N/D'))
             col2.metric("Duración Contrato", resumen.get('duracion_contrato', 'N/D'))
             col3.metric("Admite Lotes", resumen.get('admite_lotes', 'N/D'))
 
         with st.container(border=True):
             st.subheader("🛠️ Requisitos Técnicos Clave")
-            # También usamos .get() aquí por seguridad.
             requisitos_tecnicos = requisitos.get('requisitos_tecnicos', []) 
             if not requisitos_tecnicos:
                 st.info("No se extrajeron requisitos técnicos específicos.")
