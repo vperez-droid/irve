@@ -294,11 +294,12 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     
 
 
-def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regeneration):
+def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regeneration):
     st.markdown("<h3>FASE 2: Revisión de Resultados</h3>", unsafe_allow_html=True)
     st.markdown("Revisa el índice, la guía de redacción y el plan estratégico. Puedes hacer ajustes con feedback, regenerarlo todo desde cero, o aceptarlo para continuar.")
     st.markdown("---")
-    st.button("← Volver a la gestión de archivos", on_click=go_to_phase1)
+    # He corregido el botón para que apunte a go_to_phase2, que es la gestión de archivos.
+    st.button("← Volver a la gestión de archivos", on_click=go_to_phase2)
 
     if 'generated_structure' not in st.session_state or not st.session_state.generated_structure:
         st.warning("No se ha generado ninguna estructura.")
@@ -332,6 +333,7 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
                     st.session_state.generated_structure = json.loads(json_limpio_str_regenerado)
                     st.toast("¡Estructura regenerada con feedback!")
                     st.session_state.feedback_area = "" # Limpia el área de texto
+                    st.rerun()
                 else:
                     st.error("La IA no devolvió una estructura válida tras la regeneración.")
             except Exception as e:
@@ -346,10 +348,9 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
         estructura = st.session_state.generated_structure.get('estructura_memoria')
         matices = st.session_state.generated_structure.get('matices_desarrollo')
         
-        # Llama a la función de utils.py que ahora muestra el índice y las indicaciones
         mostrar_indice_desplegable(estructura, matices)
         
-        # 2. MUESTRA EL PLAN ESTRATÉGICO (BLOQUE CORREGIDO)
+        # 2. MUESTRA EL PLAN ESTRATÉGICO (BLOQUE MEJORADO)
         # ----------------------------------------------------------------------
         st.markdown("---")
         st.subheader("📊 Plan Estratégico del Documento")
@@ -374,21 +375,62 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
             if plan:
                 st.write("**Distribución de Contenido Sugerida (Páginas y Puntuación por Apartado):**")
                 
-                # Convertimos la lista a un DataFrame de Pandas para un mejor control
                 df_plan = pd.DataFrame(plan)
 
-                # Mapeo de nombres de columna técnicos a nombres amigables para el usuario
                 column_rename_map = {
                     'apartado': 'Apartado Principal',
                     'paginas_sugeridas': 'Páginas Sugeridas',
                     'puntuacion_sugerida': 'Puntuación / Peso'
                 }
                 
-                # Renombramos solo las columnas que realmente existen en el DataFrame
-                # Esto hace que el código no falle si la IA no devuelve la columna de puntuación
                 df_plan_renamed = df_plan.rename(columns={k: v for k, v in column_rename_map.items() if k in df_plan.columns})
                 
                 st.dataframe(df_plan_renamed, use_container_width=True, hide_index=True)
+
+        # 3. MUESTRA LA SECCIÓN DE ACCIONES Y FEEDBACK
+        # ----------------------------------------------------------------------
+        st.markdown("---")
+        st.subheader("Validación y Siguiente Paso")
+        
+        st.text_area(
+            "Si necesitas cambios en el índice, el plan o las indicaciones, descríbelos aquí:",
+            key="feedback_area",
+            placeholder="Ejemplos:\n- 'El límite real son 40 páginas, reajusta la distribución.'\n- 'En el apartado 2, une los subapartados 2.1 y 2.2.'\n- 'En las indicaciones de 1.1, añade que se debe incluir un cronograma visual.'"
+        )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.button("Regenerar con Feedback", on_click=handle_regeneration_with_feedback, use_container_width=True)
+        with col2:
+            st.button("🔁 Regenerar Todo desde Cero", on_click=lambda: handle_full_regeneration(model), use_container_width=True, help="Descarta este análisis y genera uno nuevo desde cero analizando los pliegos otra vez.")
+
+        # He corregido la navegación para que vaya a la FASE 3 como indica el botón.
+        if st.button("Aceptar y Pasar a Fase 3 →", type="primary", use_container_width=True):
+            with st.spinner("Sincronizando carpetas y guardando análisis final en Drive..."):
+                try:
+                    service = st.session_state.drive_service
+                    project_folder_id = st.session_state.selected_project['id']
+                    
+                    deleted_count = sync_guiones_folders_with_index(service, project_folder_id, st.session_state.generated_structure)
+                    if deleted_count > 0:
+                        st.success(f"Limpieza completada: {deleted_count} carpetas de guiones obsoletas eliminadas.")
+                    
+                    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
+                    json_bytes = json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False).encode('utf-8')
+                    mock_file_obj = io.BytesIO(json_bytes)
+                    mock_file_obj.name = "ultimo_indice.json"
+                    mock_file_obj.type = "application/json"
+                    
+                    saved_index_id = find_file_by_name(service, "ultimo_indice.json", docs_app_folder_id)
+                    if saved_index_id:
+                        delete_file_from_drive(service, saved_index_id)
+                    
+                    upload_file_to_drive(service, mock_file_obj, docs_app_folder_id)
+                    st.toast("Análisis final guardado en tu proyecto de Drive.")
+                    go_to_phase3() # Llama a la función para ir a la siguiente fase.
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Ocurrió un error durante la sincronización o guardado: {e}
 
         # 3. MUESTRA LA SECCIÓN DE ACCIONES Y FEEDBACK
         # ----------------------------------------------------------------------
