@@ -8,13 +8,14 @@ google-api-python-client>=2.90.0
 google-auth-oauthlib>=1.0.0
 google-auth-httplib2>=0.1.0
 
-# ---- Librerías de bajo nivel: HTTP, Red y Criptografía (CLAVE PARA EL ERROR SSL) ----
+# ---- Librerías de Red y Criptografía (CLAVE PARA RESOLVER EL ERROR SSL) ----
+# Estas versiones aseguran la compatibilidad con los protocolos de seguridad (TLS) de Google.
 httplib2>=0.22.0
 requests>=2.31.0
-urllib3>=2.0.0  # Se recomienda subir a la versión 2.x para mejores prácticas de seguridad
-pyopenssl>=23.2.0  # <--- AÑADIR ESTA LÍNEA. Es crucial.
-cryptography>=41.0.3  # <--- SUBIR la versión mínima para asegurar compatibilidad.
-certifi>=2023.7.22  # <--- AÑADIR para gestionar el store de certificados.
+urllib3>=2.0.0
+pyopenssl>=23.2.0
+cryptography>=41.0.3
+certifi>=2023.7.22
 
 # ---- Manipulación de Documentos ----
 pypdf>=3.17.0
