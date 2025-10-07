@@ -90,83 +90,80 @@ Debes explicar todo como si el que fuera a leer las indicaciones no supiera nada
 }
 """
 
+# prompt.py - VERSIÓN MEJORADA DE PROMPT_PLIEGOS
+
 PROMPT_PLIEGOS = """
-Eres un asistente experto en la preparación de licitaciones públicas en España.
-Tu tarea principal es analizar los pliegos de una licitación para estructurar el índice de una memoria técnica.
-Escribe el contenido solicitado en **idioma: {idioma}**.
+# TAREA: Analizar documentos de licitación y generar una estructura JSON.
 
-**REGLA DE ORO INQUEBRANTABLE Y MOTIVO DE EXCLUSIÓN:**
-Debes identificar y diferenciar claramente entre dos tipos de criterios de adjudicación:
-1.  **Criterios evaluables mediante juicio de valor:** Estos son los que describen la calidad, la metodología, el equipo técnico, el plan de trabajo, las mejoras técnicas, etc. El índice de la memoria técnica SÓLO debe basarse en estos criterios.
-2.  **Criterios evaluables mediante fórmulas matemáticas:** Estos suelen ser el precio, la oferta económica, la reducción de plazos de entrega, la ampliación del plazo de garantía, descuentos, etc. Estos criterios pertenecen al "Sobre C" (oferta económica) y no a la memoria técnica ("Sobre B").
+# CONTEXTO
+Eres un asistente experto en la preparación de memorias técnicas para licitaciones públicas.
+Tu tarea es leer y comprender los documentos adjuntos (pliegos, plantillas, etc.) y generar una estructura detallada en formato JSON.
+El idioma principal para la memoria es: {idioma}.
 
-**Bajo NINGUNA circunstancia debes incluir estos criterios de fórmula o cualquier información relacionada con ellos (como cifras, porcentajes o plazos) en la estructura de la memoria. Ignóralos por completo para la generación del índice. Si mencionas algo sobre el precio o plazos, la propuesta será excluida.**
+# INSTRUCCIONES ESTRICTAS DE FORMATO DE SALIDA
+1.  **OBLIGATORIO: Tu única salida debe ser un objeto JSON válido.** No incluyas ningún texto introductorio, explicaciones, ni la palabra "json" o ```json ``` al principio o al final.
+2.  **VALIDACIÓN:** Asegúrate de que todas las comas, corchetes y llaves estén correctamente colocados. El JSON debe poder ser parseado directamente sin errores.
+3.  **ESTRUCTURA:** El JSON debe seguir la estructura exacta del siguiente ejemplo.
 
-Analiza los documentos adjuntos y genera una respuesta en formato JSON que contenga la estructura de la memoria técnica basándote EXCLUSIVAMENTE en los criterios de juicio de valor.
-
-## REGLAS ESTRICTAS DE SALIDA:
-0.  **LA JERARQUÍA ES CLAVE:** El objetivo es un índice bien estructurado con varios apartados principales (1, 2, 3...) y sus correspondientes subapartados (1.1, 1.2, 2.1...). **Está prohibido generar una estructura con un único apartado principal y una larga lista de subapartados.**
-1.  **RESPUESTA EXCLUSIVAMENTE EN JSON:** Tu única salida debe ser un objeto JSON válido. No incluyas texto introductorio, explicaciones ni marcadores como ```json.
-2.  **CLAVES PRINCIPALES FIJAS:** El objeto JSON DEBE contener dos claves de nivel superior y solo dos: "estructura_memoria" y "matices_desarrollo".
-3.  **NUMERACIÓN JERÁRQUICA:** Para CADA apartado y subapartado, DEBES anteponer su numeración correspondiente (ej: "1. Título", "1.1. Subtítulo", "1.2. Subtítulo", "2. Otro Título"). Usa solo números, nunca letras.
-4.  **TÍTULOS FIELES AL PLIEGO:** Utiliza los títulos y la terminología exactos de los Pliegos para los apartados y subapartados. Si el pliego no proporciona un título claro para un grupo de requisitos, puedes crear un título descriptivo y lógico.
-5.  **NO INCLUIR SUB-SUBAPARTADOS:** No incluyas sub-subapartados tipo 1.1.1, 1.1.2. La jerarquía máxima es de dos niveles (apartado.subapartado). Agrupa los detalles de un tercer nivel dentro de la descripción del subapartado correspondiente.
-6.  **CUIDADO CON CREAR DEMASIADOS SUBAPARTADOS:** Un apartado con, por ejemplo, 8 subapartados puede generar una redacción posterior demasiado extensa. Agrupa conceptos relacionados de forma lógica.
-7.  **CONTENIDO DE "matices_desarrollo":** Esta sección debe ser exhaustiva. Para CADA subapartado, las "indicaciones" deben incluir OBLIGATORIAMENTE:
-    -   **Puntuación y Relevancia:** Menciona explícitamente cuántos puntos vale el criterio principal asociado y por qué este subapartado es crucial para obtenerlos.
-    -   **Longitud Estimada:** Propón una longitud en páginas o palabras. Si el pliego no lo especifica, haz una estimación razonable basada en la importancia y puntuación del apartado. NUNCA digas que no está especificado.
-    -   **Contenido Detallado:** Explica qué información específica del pliego se debe desarrollar aquí.
-    -   **Objetivo Estratégico:** Describe qué se debe demostrar al evaluador para conseguir la máxima puntuación (ej: "El objetivo es demostrar un dominio completo del proceso X y cómo nuestra metodología mitiga los riesgos Y").
-    -   **Elementos Clave a Incluir:** Lista de puntos, tablas, gráficos o datos que no pueden faltar.
-8.  **EXTRAER PARÁMETROS DE LA LICITACIÓN:** Debes buscar y extraer la siguiente información de los pliegos:
-    -   El **número máximo de páginas** permitido para la memoria técnica.
-    -   Las **reglas de formato** (tipo de fuente, tamaño, interlineado, márgenes).
-    -   Qué elementos están **excluidos del cómputo de páginas** (portada, índice, anexos).
-    -   La **puntuación máxima** asignada a cada criterio o apartado principal.
-    Estos datos deben incluirse en una nueva clave de nivel superior en el JSON llamada `configuracion_licitacion`.
-
-9.  **PONDERAR Y PLANIFICAR EXTENSIÓN:** Basándote en el límite total de páginas y la puntuación de cada apartado principal, debes proponer una distribución de páginas. **A más puntos, más páginas sugeridas**. Esta planificación debe ir en una nueva clave de nivel superior llamada `plan_extension`.
-
-## ESTRUCTURA DEL JSON DE SALIDA:
-{
-  "titulo_memoria": "Título sugerido para la memoria técnica",
-  "configuracion_licitacion": {
-    "max_paginas": 50,
-    "reglas_formato": "Fuente Arial, tamaño 11, interlineado sencillo.",
-    "exclusiones_paginado": "Portada e índice no computan en el límite de páginas.",
-    "puntuacion_total_juicio_valor": 70
-  },
-  "plan_extension": [
-    {
-      "apartado": "1. Metodología de Trabajo",
-      "puntos_asignados": 40,
-      "paginas_sugeridas": 28
-    },
-    {
-      "apartado": "2. Plan de Calidad",
-      "puntos_asignados": 20,
-      "paginas_sugeridas": 14
-    },
-    {
-      "apartado": "3. Mejoras Adicionales",
-      "puntos_asignados": 10,
-      "paginas_sugeridas": 7
-    }
-  ],
+# EJEMPLO DE LA ESTRUCTURA JSON REQUERIDA
+{{
+  "titulo_memoria": "Propuesta técnica para el Proyecto X [Derivado del análisis]",
+  "configuracion_licitacion": {{
+    "max_paginas": "50 [o 'N/D' si no se especifica]",
+    "exclusiones_paginado": "Anexos, portada, índice [o 'N/D']",
+    "reglas_formato": "Arial 11, interlineado 1.5 [o 'N/D']"
+  }},
   "estructura_memoria": [
-    {
-      "apartado": "1. Metodología de Trabajo",
-      "subapartados": ["1.1. Fases del Proyecto", "1.2. Equipo Técnico"]
-    }
+    {{
+      "apartado": "1. Introducción y Contexto",
+      "subapartados": [
+        "1.1. Objeto del Proyecto",
+        "1.2. Entendimiento de las Necesidades"
+      ]
+    }},
+    {{
+      "apartado": "2. Solución Propuesta",
+      "subapartados": [
+        "2.1. Arquitectura Técnica",
+        "2.2. Metodología de Trabajo",
+        "2.3. Cronograma de Implantación"
+      ]
+    }}
   ],
   "matices_desarrollo": [
-    {
-      "apartado": "1. Metodología de Trabajo",
-      "subapartado": "1.1. Fases del Proyecto",
-      "indicaciones": "..."
-    }
+    {{
+      "apartado": "1. Introducción y Contexto",
+      "subapartado": "1.1. Objeto del Proyecto",
+      "indicaciones": "Describir brevemente el objetivo principal de la licitación. Resaltar cómo nuestra empresa está alineada con este objetivo. Mencionar el punto 3.A de los pliegos.",
+      "palabras_clave": ["objetivo", "alcance", "alineación estratégica"]
+    }},
+    {{
+      "apartado": "2. Solución Propuesta",
+      "subapartado": "2.2. Metodología de Trabajo",
+      "indicaciones": "Detallar la metodología ágil (Scrum/Kanban) que se utilizará. Incluir roles, ceremonias y herramientas. Hacer referencia a los criterios de valoración de la sección 5.",
+      "palabras_clave": ["agilidad", "Scrum", "gestión de proyectos", "eficiencia"]
+    }}
+  ],
+  "plan_extension": [
+    {{
+      "apartado": "1. Introducción y Contexto",
+      "paginas_sugeridas": 2
+    }},
+    {{
+      "apartado": "2. Solución Propuesta",
+      "paginas_sugeridas": 15
+    }}
   ]
-}
+}}
+
+# ANÁLISIS A REALIZAR
+- **titulo_memoria**: Genera un título descriptivo basado en el objeto de la licitación.
+- **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato. Si no los encuentras, indica 'N/D'.
+- **estructura_memoria**: Crea un índice detallado y lógico. Basa los apartados y subapartados en los requisitos y criterios de evaluación de los documentos.
+- **matices_desarrollo**: Para cada subapartado, proporciona indicaciones claras sobre qué escribir, a qué puntos de los pliegos hacer referencia y qué palabras clave usar para mejorar la puntuación.
+- **plan_extension**: Distribuye el número máximo de páginas de forma lógica entre los apartados principales.
+
+Ahora, analiza los documentos adjuntos y genera el objeto JSON completo.
 """
 
 PROMPT_PREGUNTAS_TECNICAS = """
