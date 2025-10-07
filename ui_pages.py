@@ -404,6 +404,8 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
                 except Exception as e:
                     st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
                     
+# Reemplaza tu función phase_3_page en ui_pages.py con esta versión completa y corregida
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     USE_GPT_MODEL = True
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
@@ -561,11 +563,16 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 if ejecutar_generacion_con_gpt(subapartado_titulo, matiz): st.rerun()
                             else:
                                 if ejecutar_generacion_con_gemini(model, subapartado_titulo, matiz): st.rerun()
+                                
+    # --- [BLOQUE CORREGIDO] ---
+    # Los botones ahora usan las funciones correctas que se pasaron como argumentos
     st.markdown("---")
     col_nav1, col_nav2 = st.columns(2)
-    with col_nav1: st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase1_results, use_container_width=True)
-    with col_nav2: st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase3, use_container_width=True)
-
+    with col_nav1: 
+        st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
+    with col_nav2: 
+        st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
+        
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
@@ -826,6 +833,9 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase2, use_container_width=True)
     with col_nav3_2:
         st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase4, use_container_width=True)
+        
+# Reemplaza tu función phase_5_page en ui_pages.py con esta versión completa y corregida
+
 def phase_5_page(model, go_to_phase4, go_to_phase6):
     st.markdown("<h3>FASE 5: Redacción del Cuerpo del Documento</h3>", unsafe_allow_html=True)
     st.markdown("Ejecuta el plan de prompts para generar el contenido completo de la memoria técnica.")
@@ -836,7 +846,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
     plan_conjunto_id = find_file_by_name(service, "plan_de_prompts_conjunto.json", docs_app_folder_id)
     if not plan_conjunto_id:
         st.warning("No se ha encontrado un 'plan_de_prompts_conjunto.json'. Vuelve a la Fase 3 para generarlo.")
-        if st.button("← Ir a Fase 3"): go_to_phase3(); st.rerun()
+        if st.button("← Ir a Fase 3"): go_to_phase3(); st.rerun() # Esta navegación específica está bien
         return
     try:
         json_bytes = download_file_from_drive(service, plan_conjunto_id).getvalue()
@@ -889,10 +899,15 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
     if st.session_state.get("generated_doc_buffer"):
         st.info("El cuerpo del documento está listo para descargar o para el ensamblaje final.")
         st.download_button(label="📄 Descargar Cuerpo del Documento (.docx)", data=st.session_state.generated_doc_buffer, file_name=st.session_state.generated_doc_filename, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+    
+    # --- [BLOQUE CORREGIDO] ---
+    # Los botones ahora usan las funciones correctas que se pasaron como argumentos
     st.markdown("---")
     col_nav1, col_nav2 = st.columns(2)
-    with col_nav1: st.button("← Volver a Fase 4 (Plan de Prompts)", on_click=go_to_phase3, use_container_width=True)
-    with col_nav2: st.button("Ir a Ensamblaje Final (F6) →", on_click=go_to_phase5, use_container_width=True, type="primary", disabled=not st.session_state.get("generated_doc_buffer"))
+    with col_nav1: 
+        st.button("← Volver a Fase 4 (Plan de Prompts)", on_click=go_to_phase4, use_container_width=True)
+    with col_nav2: 
+        st.button("Ir a Ensamblaje Final (F6) →", on_click=go_to_phase6, use_container_width=True, type="primary", disabled=not st.session_state.get("generated_doc_buffer"))
 
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
     st.markdown("<h3>FASE 5: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
