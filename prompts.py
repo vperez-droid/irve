@@ -282,7 +282,6 @@ Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato rel
 Genera únicamente el objeto JSON corregido. No incluyas ningún texto fuera de él.
 """
 
-# Reemplaza tu PROMPT_DESARROLLO actual con este en tu archivo prompts.py
 
 PROMPT_DESARROLLO = """
 **SYSTEM DIRECTIVE: YOUR ENTIRE RESPONSE MUST BE A SINGLE, VALID JSON OBJECT. ALL TEXT WITHIN THE JSON MUST BE IN THIS LANGUAGE: {idioma}. YOU ARE A CONTENT ARCHITECT, NOT A CONSULTANT. YOUR JOB IS TO DECONSTRUCT, NOT TO ANALYZE OR EVALUATE.**
@@ -290,8 +289,8 @@ PROMPT_DESARROLLO = """
 **STRATEGIC CONTEXT & CONSTRAINTS (ABSOLUTE RULES):**
 - **Overall Document Limit:** {max_paginas} pages.
 - **General Formatting Rules:** {reglas_formato}.
-- **Suggested Length for this ENTIRE main section ('{apartado_referencia}'):** {paginas_sugeridas_apartado} pages.
-- **Your Mission:** Deconstruct the 'Guion' for the subsection '{subapartado_referencia}' into a series of executable prompts. The prompts you create must be sized and detailed appropriately so that the final written content fits logically within the overall page budget for this section. Break down long topics into multiple, smaller text prompts if necessary to control the output length.
+- **CRITICAL - Suggested Length for THIS SPECIFIC SUBSECTION ('{subapartado_referencia}'):** {paginas_sugeridas_subapartado} pages.
+- **Your Mission:** Deconstruct the 'Guion' for the subsection '{subapartado_referencia}' into a series of executable prompts. The prompts you create MUST be sized and detailed so that the final written content for this subsection fits within its page budget of **{paginas_sugeridas_subapartado} pages**. If the topic is long, you MUST break it down into multiple, smaller text prompts to control the output length.
 
 **TASK:**
 You are a silent content architect. You will receive a content draft ("Guion"). Your ONLY task is to break down this draft into a structured JSON plan. This plan will be executed by another AI to write the final text.
