@@ -92,6 +92,8 @@ Debes explicar todo como si el que fuera a leer las indicaciones no supiera nada
 
 # EN prompts.py
 
+# EN prompts.py
+
 PROMPT_PLIEGOS = """
 # TAREA: Analizar documentos de licitación y generar una estructura JSON.
 
@@ -146,14 +148,23 @@ El idioma principal para la memoria es: {idioma}.
   ],
   "plan_extension": [
     {{
-      "apartado": "1. Introducción y Contexto",
-      "paginas_sugeridas": 2,
-      "puntuacion_sugerida": "10 puntos [o 'N/D']"
-    }},
-    {{
       "apartado": "2. Solución Propuesta",
-      "paginas_sugeridas": 15,
-      "puntuacion_sugerida": "45 puntos [o 'N/D']"
+      "paginas_sugeridas_apartado": 15,
+      "puntuacion_sugerida": "45 puntos [o 'N/D']",
+      "desglose_subapartados": [
+        {{
+          "subapartado": "2.1. Arquitectura Técnica",
+          "paginas_sugeridas": 8
+        }},
+        {{
+          "subapartado": "2.2. Metodología de Trabajo",
+          "paginas_sugeridas": 5
+        }},
+        {{
+          "subapartado": "2.3. Cronograma de Implantación",
+          "paginas_sugeridas": 2
+        }}
+      ]
     }}
   ]
 }}
@@ -163,11 +174,10 @@ El idioma principal para la memoria es: {idioma}.
 - **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato. Si no los encuentras, indica 'N/D'.
 - **estructura_memoria**: Crea un índice detallado y lógico. Basa los apartados y subapartados en los requisitos y criterios de evaluación de los documentos.
 - **matices_desarrollo**: Para cada subapartado, proporciona indicaciones claras sobre qué escribir, a qué puntos de los pliegos hacer referencia y qué palabras clave usar para mejorar la puntuación.
-# --- INICIO DEL CAMBIO ---
-- **plan_extension**: Para cada apartado principal, realiza dos tareas:
-    1.  Distribuye el número máximo de páginas de forma lógica.
-    2.  Busca en los criterios de valoración la puntuación o el peso porcentual asignado a ese apartado y añádelo en 'puntuacion_sugerida'. Si no encuentras una puntuación específica para un apartado, indica 'N/D'.
-# --- FIN DEL CAMBIO ---
+- **plan_extension**: Para cada apartado principal, realiza TRES tareas:
+    1.  Asigna un número total de páginas sugeridas para todo el apartado (`paginas_sugeridas_apartado`).
+    2.  **CRÍTICO: Desglosa esa asignación entre sus subapartados (`desglose_subapartados`), asignando un número de páginas (`paginas_sugeridas`) a CADA subapartado. La suma de las páginas de los subapartados debe ser coherente con el total del apartado.**
+    3.  Busca en los criterios de valoración la puntuación para ese apartado y añádelo en 'puntuacion_sugerida'. Si no la encuentras, indica 'N/D'.
 
 Ahora, analiza los documentos adjuntos y genera el objeto JSON completo.
 """
