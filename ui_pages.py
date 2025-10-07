@@ -1,4 +1,5 @@
 import streamlit as st
+import panda as pd
 import json
 import openai
 from openai import OpenAI
@@ -291,7 +292,7 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     # Usamos la función que hemos recibido como argumento
     st.button("← Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True, key="back_to_projects")
     
-# Reemplaza tu función phase_2_results_page completa con este código en ui_pages.py
+
 
 def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regeneration):
     st.markdown("<h3>FASE 2: Revisión de Resultados</h3>", unsafe_allow_html=True)
@@ -348,7 +349,7 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
         # Llama a la función de utils.py que ahora muestra el índice y las indicaciones
         mostrar_indice_desplegable(estructura, matices)
         
-        # 2. MUESTRA EL PLAN ESTRATÉGICO
+        # 2. MUESTRA EL PLAN ESTRATÉGICO (BLOQUE CORREGIDO)
         # ----------------------------------------------------------------------
         st.markdown("---")
         st.subheader("📊 Plan Estratégico del Documento")
@@ -371,8 +372,23 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
                 st.info(config.get('reglas_formato', 'No especificado'))
 
             if plan:
-                st.write("**Distribución de Contenido Sugerida (Páginas por Apartado):**")
-                st.dataframe(plan, use_container_width=True, hide_index=True)
+                st.write("**Distribución de Contenido Sugerida (Páginas y Puntuación por Apartado):**")
+                
+                # Convertimos la lista a un DataFrame de Pandas para un mejor control
+                df_plan = pd.DataFrame(plan)
+
+                # Mapeo de nombres de columna técnicos a nombres amigables para el usuario
+                column_rename_map = {
+                    'apartado': 'Apartado Principal',
+                    'paginas_sugeridas': 'Páginas Sugeridas',
+                    'puntuacion_sugerida': 'Puntuación / Peso'
+                }
+                
+                # Renombramos solo las columnas que realmente existen en el DataFrame
+                # Esto hace que el código no falle si la IA no devuelve la columna de puntuación
+                df_plan_renamed = df_plan.rename(columns={k: v for k, v in column_rename_map.items() if k in df_plan.columns})
+                
+                st.dataframe(df_plan_renamed, use_container_width=True, hide_index=True)
 
         # 3. MUESTRA LA SECCIÓN DE ACCIONES Y FEEDBACK
         # ----------------------------------------------------------------------
@@ -408,11 +424,7 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
                     if saved_index_id:
                         delete_file_from_drive(service, saved_index_id)
                     upload_file_to_drive(service, mock_file_obj, docs_app_folder_id)
-                    st.toast("Análisis final guardado en tu proyecto de Drive.")
-                    go_to_phase2()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
+                    st.toast
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     USE_GPT_MODEL = True
