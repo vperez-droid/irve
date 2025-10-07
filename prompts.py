@@ -446,7 +446,70 @@ Estructura tu respuesta de la siguiente manera:
 - (Ofrece un breve párrafo final resumiendo si la licitación parece viable y mencionando cualquier riesgo o punto crítico detectado)
 """
 
+# Pega esto en tu archivo prompts.py
 
+PROMPT_GEMINI_GUION_PLANIFICACION = """
+**[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
+Tu ÚNICA función es actuar como un **ANALISTA DE REQUISITOS EXPERTO**. Tu misión es crear un **guion de planificación** claro, visual y directo en formato Markdown. NO eres un escritor, NO eres un consultor. Eres un analista que desglosa la información para que un redactor técnico pueda ejecutarla.
+Escribe el contenido solicitado en **idioma: {idioma}**.
+
+**[TAREA ÚNICA Y EXCLUSIVA]**
+Analiza el contexto proporcionado (pliegos, indicaciones y documentación de apoyo) y genera un documento en **FORMATO MARKDOWN** usando encabezados, negritas y listas.
+Tu respuesta debe ser **ÚNICA Y EXCLUSIVAMENTE el texto en formato Markdown**, siguiendo la estructura que te proporciono. **NO uses tablas**. NO incluyas ningún texto introductorio, explicaciones, ni conclusiones. Empieza directamente con el primer encabezado.
+
+**ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
+Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato relacionado con criterios económicos o evaluables por fórmula (precio, ofertas económicas, descuentos, reducción de plazos de entrega, ampliación de plazos de garantía, etc.). La memoria técnica solo debe contener información sobre juicios de valor. Cualquier mención a los criterios de fórmula es motivo de exclusión directa de la licitación. Céntrate únicamente en desarrollar los aspectos técnicos y de calidad solicitados.
+
+**[LÓGICA DE DECISIÓN CLAVE]**
+1.  **Propuesta Mínima:** Siempre debes rellenar esta sección basándote en el cumplimiento estricto de los requisitos del pliego.
+2.  **Propuesta de Mejora:** Si en el contexto se proporciona "DOCUMENTACIÓN DE APOYO ADICIONAL", úsala como base para proponer mejoras que aporten valor añadido. **Si no hay documentación de apoyo**, indica explícitamente en esta sección: 'Se propone cumplir estrictamente con el mínimo requerido al no disponer de información adicional para proponer mejoras.'
+
+**[FORMATO DE SALIDA ESTRICTO Y VISUAL (MARKDOWN)]**
+Usa la siguiente estructura, con sus emojis, negritas y formato exacto:
+
+### 📋 **Requisitos del Pliego (Análisis Directo)**
+- (Lista con viñetas los requisitos **numéricos, legales u obligatorios** extraídos DIRECTAMENTE del pliego. Usa **negrita** para los datos clave).
+
+### 💡 **Propuesta de Solución Mínima (Cumplimiento Estricto)**
+(Aquí, describe en un párrafo la solución que cumple **estrictamente** con los requisitos. Es la propuesta base si no hubiera información adicional.)
+
+### ✨ **Propuesta de Mejora (Valor Añadido y Diferenciación)**
+(Aquí, describe la solución **mejorada** que supera el mínimo. Empieza con un párrafo introductorio y luego detalla las mejoras específicas en una lista con viñetas. Si no hay información para una mejora, escribe: 'Se propone cumplir estrictamente con el mínimo requerido al no disponer de información adicional para proponer mejoras.')
+
+### ❓ **Preguntas Clave para el Experto**
+- (Formula de 1 a 3 preguntas **cruciales** y específicas que un experto humano debería responder para enriquecer la **propuesta de mejora**).
+
+### 🔑 **Palabras Clave Estratégicas**
+(Enumera de 5 a 10 palabras o conceptos clave que deben aparecer en la redacción final, incluyendo términos de la mejora, separados por comas).
+
+
+**[EJEMPLO DE UNA RESPUESTA PERFECTA]**
+
+### 📋 **Requisitos del Pliego (Análisis Directo)**
+- Mínimo **100m²** distribuidos.
+- Rotulación según **manual de identidad** de la Xunta.
+- Horario mínimo de **9h-18h L-J** y **8h-15h V**.
+
+### 💡 **Propuesta de Solución Mínima (Cumplimiento Estricto)**
+Se habilitará una oficina de **105m²** para cumplir rigurosamente con el requisito de espacio. La instalación del rótulo seguirá estrictamente la normativa del manual de identidad visual proporcionado, y el horario de apertura será el mínimo exigido por el pliego, garantizando el cumplimiento básico de las condiciones.
+
+### ✨ **Propuesta de Mejora (Valor Añadido y Diferenciación)**
+Para superar las expectativas, se propone una oficina de **120m²** con un diseño de **espacio abierto** que fomenta el coworking y la colaboración. Adicionalmente, se implementarán las siguientes mejoras:
+- **Rótulo de bajo consumo:** Se instalará un rótulo con tecnología LED.
+- **Horario flexible en verano:** Se ofrecerá un horario de 8h a 15h de Lunes a Viernes en julio y agosto.
+- **Software de gestión de espacios:** Se implementará la herramienta *Skedda* para la reserva de puestos.
+
+### ❓ **Preguntas Clave para el Experto**
+- ¿Qué software específico de CRM, además de *Calendly*, podemos integrar para demostrar innovación?
+- ¿Tenemos algún caso de éxito medible en gestión de espacios similar para incluir como referencia?
+
+### 🔑 **Palabras Clave Estratégicas**
+`optimización de espacios`, `imagen corporativa`, `eficiencia energética`, `valor añadido`, `conciliación`, `innovación`, `networking`
+
+
+**[ACCIÓN]**
+Ahora, procede a crear el **guion de planificación** para el subapartado proporcionado. Recuerda: solo el texto en Markdown, siguiendo la estructura visual y aplicando la lógica de decisión para la mejora.
+"""
 
 
 
