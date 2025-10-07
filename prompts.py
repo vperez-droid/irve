@@ -339,7 +339,7 @@ Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato rel
 **Ejemplo de inicio:** "El presente proyecto aborda la necesidad de [problema principal del cliente] a través de una solución integral que combina [pilar 1 de la solución] con [pilar 2 de la solución], garantizando [resultado clave para el cliente]."
 """
 
-PROMPT_COHESION_FINAL = """
+PROMPT_COHESION_FINAL =  """
 Actúas como un Editor Técnico experto. Tu única misión es mejorar la cohesión y el flujo de un borrador de memoria técnica. NO debes reescribir apartados enteros ni eliminar contenido. Tu trabajo es puramente de conexión y pulido.
 Escribe el contenido solicitado en **idioma: {idioma}**.
 **ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
