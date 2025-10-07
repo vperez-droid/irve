@@ -100,6 +100,8 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 
 
+# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión corregida
+
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Viabilidad</h3>", unsafe_allow_html=True)
     st.info("Ahora esta fase genera un documento .docx con el análisis para evitar errores de formato.")
@@ -135,7 +137,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown("---")
     st.header("Extracción de Requisitos Clave")
     
-    # --- [CAMBIO CLAVE] LÓGICA DEL BOTÓN AHORA GENERA UN DOCX ---
     if st.button("Analizar Pliegos y Generar Documento de Análisis", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
         with st.spinner("🧠 Analizando documentos y generando el informe .docx..."):
             try:
@@ -167,7 +168,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 
                 response = client.chat.completions.create(
                     model="gpt-4o-mini",
-                    # Ya no forzamos la salida a JSON
                     messages=[
                         {"role": "system", "content": prompt_sistema},
                         {"role": "user", "content": contexto_documentos}
@@ -177,17 +177,13 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 
                 texto_analisis = response.choices[0].message.content
                 
-                # --- Creación del documento DOCX en memoria ---
                 documento = docx.Document()
-                # Usamos la función que ya tienes para convertir Markdown a Word
                 agregar_markdown_a_word(documento, texto_analisis)
 
-                # Guardar el documento en un buffer de memoria
                 buffer = io.BytesIO()
                 documento.save(buffer)
                 buffer.seek(0)
 
-                # Guardar el buffer en el estado de la sesión para el botón de descarga
                 st.session_state.analysis_doc_buffer = buffer
                 st.session_state.analysis_doc_filename = "Analisis_de_Viabilidad.docx"
                 
@@ -196,16 +192,29 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             except Exception as e:
                 st.error(f"Ocurrió un error crítico durante el análisis con OpenAI: {e}")
                 st.error(f"Tipo de error: {type(e).__name__}")
-                # Limpiamos el buffer si hay un error
                 if 'analysis_doc_buffer' in st.session_state:
                     del st.session_state['analysis_doc_buffer']
 
-
-    # --- [CAMBIO CLAVE] SECCIÓN DE RESULTADOS AHORA MUESTRA UN BOTÓN DE DESCARGA ---
+    # --- [BLOQUE CORREGIDO] ---
+    # La llamada a st.download_button ahora tiene la sintaxis correcta.
     if 'analysis_doc_buffer' in st.session_state and st.session_state.analysis_doc_buffer:
         st.success("El análisis se ha completado. Ya puedes descargar el informe.")
-        st.download_button("El análisis se ha completado. Ya puedes descargar el informe.")
+        st.download_button(
             label="📄 Descargar Informe de Viabilidad (.docx)",
+            data=st.session_state.analysis_doc_buffer,
+            file_name=st.session_state.analysis_doc_filename,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
+        )
+        
+        st.info("Revisa el documento y, si todo es correcto, puedes continuar a la siguiente fase.")
+        st.markdown("---")
+        st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
+
+
+    st.write("")
+    st.markdown("---")
+    st.button("← Volver a Selección de Proyecto", on_click=go_to_project_selection, use_container_width=True)
 # =============================================================================
 # =============================================================================
 #           FASE 2: ANÁLISIS Y ESTRUCTURA (ESTA ES LA FUNCIÓN QUE FALTA)
