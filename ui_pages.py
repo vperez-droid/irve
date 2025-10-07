@@ -244,6 +244,8 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
 # =============================================================================
 
 # AHORA ACEPTA LAS FUNCIONES QUE NECESITA
+# Reemplaza tu función phase_2_structure_page en ui_pages.py con esta versión corregida
+
 def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_full_regeneration, back_to_project_selection_and_cleanup):
     if not st.session_state.get('selected_project'):
         st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
@@ -312,8 +314,18 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
                 go_to_phase2_results(); st.rerun()
 
     st.write(""); st.markdown("---")
-    # Usamos la función que hemos recibido como argumento
-    st.button("← Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True, key="back_to_projects")
+    
+    # --- [BLOQUE DE NAVEGACIÓN CORREGIDO] ---
+    # Creamos dos columnas para tener una navegación más limpia y clara
+    col_nav1, col_nav2 = st.columns(2)
+
+    with col_nav1:
+        # Este es el botón que faltaba. Llama a la función go_to_phase1.
+        st.button("← Volver a Análisis de Viabilidad (F1)", on_click=go_to_phase1, use_container_width=True)
+    
+    with col_nav2:
+        # Mantenemos el botón para volver al inicio, pero con un texto más claro.
+        st.button("↩️ Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True, key="back_to_projects")
     
 
 def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regeneration):
