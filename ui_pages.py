@@ -105,49 +105,31 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 # En ui_pages.py, reemplaza tu función con esta versión final que corrige el bucle de recarga:
 
+# En tu archivo ui_pages.py, reemplaza la función anterior con esta:
+
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
-    # NOTA: Esta función se ha modificado para NO USAR GOOGLE DRIVE y así aislar el problema.
+    # NOTA: Esta versión es la local de prueba que estabas usando, ahora corregida.
     
-    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad (Prueba Local sin Drive)</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad</h3>", unsafe_allow_html=True)
     st.warning("Estás en modo de prueba. Los archivos se suben desde tu ordenador y no se guardan en Drive.")
 
     if 'local_pliegos' not in st.session_state:
         st.session_state.local_pliegos = []
 
-    def limpiar_respuesta_json(texto_sucio):
-        if not isinstance(texto_sucio, str): return ""
-        try:
-            start_index = texto_sucio.find('{')
-            end_index = texto_sucio.rfind('}')
-            if start_index != -1 and end_index != -1 and end_index > start_index:
-                return texto_sucio[start_index:end_index + 1]
-            return ""
-        except Exception: return ""
-
-    # --- INICIO DE LA CORRECCIÓN CLAVE ---
-
-    # 1. Definimos una función callback que se ejecutará SOLO cuando los archivos cambien
-    def handle_file_upload():
-        # Los archivos subidos están disponibles en el estado de la sesión bajo la clave del widget
-        if st.session_state.local_file_uploader:
-            st.session_state.local_pliegos = st.session_state.local_file_uploader
-
+    # --- SECCIÓN DE CARGA LOCAL DE ARCHIVOS ---
     with st.container(border=True):
         st.subheader("1. Sube los Pliegos desde tu ordenador")
-        # 2. Usamos el parámetro 'on_change' para llamar a nuestra función de forma segura
-        st.file_uploader(
+        uploaded_files = st.file_uploader(
             "Arrastra aquí los archivos PDF o DOCX para analizar",
             type=['pdf', 'docx'],
             accept_multiple_files=True,
-            key="local_file_uploader",
-            on_change=handle_file_upload # ¡Esta es la corrección!
+            key="local_file_uploader"
         )
-    
-    # 3. ELIMINAMOS el bloque 'if uploaded_files:' que causaba el bucle.
-    # El callback y el estado de la sesión ya se encargan de todo.
+        if uploaded_files:
+            st.session_state.local_pliegos = uploaded_files
+            st.rerun()
 
-    # --- FIN DE LA CORRECCIÓN CLAVE ---
-
+    # --- MOSTRAR ARCHIVOS CARGADOS Y PERMITIR BORRARLOS ---
     if st.session_state.local_pliegos:
         st.success("Archivos cargados y listos para analizar:")
         for i, file in enumerate(st.session_state.local_pliegos):
@@ -171,7 +153,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 contenido_ia = [prompt_con_idioma]
                 
                 for file in st.session_state.local_pliegos:
-                    st.info(f"Enviando archivo a la IA: {file.name}...")
                     contenido_ia.append({"mime_type": file.type, "data": file.getvalue()})
 
                 generation_config = {"response_mime_type": "application/json"}
@@ -182,27 +163,61 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.write("Feedback del Prompt:", response.prompt_feedback)
                     st.stop()
                 
-                respuesta_texto = response.text
-                st.session_state.requisitos_extraidos = json.loads(respuesta_texto)
-                st.toast("✅ ¡Requisitos extraídos con éxito!")
+                # Limpiamos y cargamos el JSON
+                json_limpio_str = limpiar_respuesta_json(response.text)
+                if json_limpio_str:
+                    st.session_state.requisitos_extraidos = json.loads(json_limpio_str)
+                    st.toast("✅ ¡Requisitos extraídos con éxito!")
+                else:
+                    st.error("La IA devolvió una respuesta vacía o no válida.")
+                    st.session_state.requisitos_extraidos = None # Limpiamos en caso de respuesta inválida
                 
             except Exception as e:
                 st.error(f"Ocurrió un error crítico durante el proceso: {e}")
                 st.error(f"Tipo de error: {type(e).__name__}")
                 if response:
-                    st.warning("El error ocurrió después de recibir esta respuesta de la IA:")
-                    st.write(response)
+                    st.warning("La IA devolvió una respuesta que causó el error. Contenido:")
+                    st.text(response.text)
 
+    # =============================================================================
+    #           SECCIÓN DE MOSTRAR RESULTADOS (AQUÍ ESTÁ LA CORRECCIÓN)
+    # =============================================================================
     if 'requisitos_extraidos' in st.session_state and st.session_state.requisitos_extraidos:
         requisitos = st.session_state.requisitos_extraidos
+
+        # --- [NUEVO] Herramienta de depuración: Muestra el JSON completo que devolvió la IA ---
+        with st.expander("🔍 Ver la respuesta completa de la IA (JSON)"):
+            st.json(requisitos)
+
         st.success("Análisis de viabilidad completado:")
+        
+        # --- [MODIFICADO] Contenedor de Resumen (a prueba de errores) ---
         with st.container(border=True):
             st.subheader("📊 Resumen de la Licitación")
-            resumen = requisitos.get('resumen_licitacion', {})
+            
+            # CAMBIO CLAVE: Usamos .get('resumen_licitacion', {})
+            # Si la IA no incluye 'resumen_licitacion', usamos un diccionario vacío {} para evitar el KeyError.
+            resumen = requisitos.get('resumen_licitacion', {}) 
+
             col1, col2, col3 = st.columns(3)
             col1.metric("Presupuesto Base", resumen.get('presupuesto_base', 'N/D'))
             col2.metric("Duración Contrato", resumen.get('duracion_contrato', 'N/D'))
             col3.metric("Admite Lotes", resumen.get('admite_lotes', 'N/D'))
+
+        # --- [MODIFICADO] Contenedor de Requisitos Técnicos (a prueba de errores) ---
+        with st.container(border=True):
+            st.subheader("🛠️ Requisitos Técnicos Clave")
+            
+            # Hacemos lo mismo para 'requisitos_tecnicos', por si acaso.
+            requisitos_tecnicos = requisitos.get('requisitos_tecnicos', []) 
+            if not requisitos_tecnicos:
+                st.info("No se extrajeron requisitos técnicos específicos.")
+            else:
+                for req in requisitos_tecnicos:
+                    st.markdown(f"- {req}")
+        
+        # ... (Puedes añadir más contenedores para otras claves del JSON de la misma forma segura) ...
+
         st.markdown("---")
         st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
 
