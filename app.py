@@ -84,6 +84,10 @@ def back_to_project_selection_and_cleanup():
 #           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
 # =============================================================================
 
+# =============================================================================
+#           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
+# =============================================================================
+
 def handle_full_regeneration(model):
     """
     Función que genera un índice desde cero analizando los archivos de 'Pliegos'.
@@ -113,6 +117,19 @@ def handle_full_regeneration(model):
 
             response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
             
+            # ===== INICIO DE LA CORRECCIÓN =====
+            # Verificamos si la IA devolvió una respuesta válida antes de intentar procesarla.
+            # Esto evita el error cuando la respuesta está vacía o es bloqueada por filtros.
+            if not response.candidates:
+                st.error("La IA no generó una respuesta. Esto puede deberse a filtros de seguridad o un problema temporal. Inténtalo de nuevo más tarde.")
+                # Opcional: Muestra la razón del bloqueo si está disponible
+                try:
+                    st.code(f"Razón del bloqueo: {response.prompt_feedback}")
+                except Exception:
+                    st.code(f"Respuesta completa de la API: {response}")
+                return False
+            # ===== FIN DE LA CORRECCIÓN =====
+
             json_limpio_str = limpiar_respuesta_json(response.text)
             if json_limpio_str:
                 st.session_state.generated_structure = json.loads(json_limpio_str)
@@ -121,8 +138,16 @@ def handle_full_regeneration(model):
                 return True
             else:
                 st.error("La IA devolvió una respuesta vacía o no válida."); return False
+        except json.JSONDecodeError as e:
+            st.error(f"Error de formato: La IA no devolvió un JSON válido. Error: {e}")
+            st.info("Respuesta recibida de la IA que causó el error:")
+            st.code(response.text if 'response' in locals() else "No se pudo obtener la respuesta de la IA.")
+            return False
         except Exception as e:
-            st.error(f"Ocurrió un error durante la regeneración completa: {e}"); return False
+            st.error(f"Ocurrió un error durante la regeneración completa: {e}")
+            st.info("Respuesta recibida de la IA que causó el error:")
+            st.code(response.text if 'response' in locals() else "No se pudo obtener la respuesta de la IA.")
+            return False
 
 # =============================================================================
 #                        LÓGICA PRINCIPAL (ROUTER)
