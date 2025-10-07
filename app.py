@@ -88,6 +88,10 @@ def back_to_project_selection_and_cleanup():
 #           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
 # =============================================================================
 
+# =============================================================================
+#           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
+# =============================================================================
+
 def handle_full_regeneration(model):
     """
     Función que genera un índice desde cero analizando los archivos de 'Pliegos'.
@@ -97,6 +101,7 @@ def handle_full_regeneration(model):
         st.error("Error de sesión. No se puede iniciar la regeneración."); return False
 
     with st.spinner("Descargando archivos de 'Pliegos' y re-analizando para generar índice..."):
+        response = None  # Inicializamos la variable response a None
         try:
             service = st.session_state.drive_service
             project_folder_id = st.session_state.selected_project['id']
@@ -107,7 +112,6 @@ def handle_full_regeneration(model):
                 st.warning("No se encontraron archivos en la carpeta 'Pliegos' para analizar."); return False
 
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
-            # Usa el prompt correcto para la generación del índice
             prompt_con_idioma = PROMPT_PLIEGOS.format(idioma=idioma_seleccionado)
             contenido_ia = [prompt_con_idioma]
 
@@ -115,20 +119,25 @@ def handle_full_regeneration(model):
                 file_content_bytes = download_file_from_drive(service, file['id'])
                 contenido_ia.append({"mime_type": file['mimeType'], "data": file_content_bytes.getvalue()})
 
-            response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
-            
-            # ===== INICIO DE LA CORRECCIÓN =====
-            # Verificamos si la IA devolvió una respuesta válida antes de intentar procesarla.
-            # Esto evita el error cuando la respuesta está vacía o es bloqueada por filtros.
-            if not response.candidates:
-                st.error("La IA no generó una respuesta. Esto puede deberse a filtros de seguridad o un problema temporal. Inténtalo de nuevo más tarde.")
-                # Opcional: Muestra la razón del bloqueo si está disponible
-                try:
-                    st.code(f"Razón del bloqueo: {response.prompt_feedback}")
-                except Exception:
-                    st.code(f"Respuesta completa de la API: {response}")
+            # ===== INICIO DE LA CORRECCIÓN AVANZADA =====
+            # Aislamos la llamada a la API para capturar errores que ocurren DURANTE la llamada
+            try:
+                response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
+            except Exception as api_error:
+                st.error(f"Error Crítico durante la llamada a la API de Gemini.")
+                st.info("Esto suele ocurrir por contenido en los documentos que activa un filtro de seguridad o por un formato inválido.")
+                st.write("Detalles del error de la librería:")
+                st.code(f"Tipo de error: {type(api_error)}\nMensaje: {api_error}")
                 return False
-            # ===== FIN DE LA CORRECCIÓN =====
+            # ===== FIN DE LA CORRECCIÓN AVANZADA =====
+
+            if not response or not response.candidates:
+                st.error("La IA no generó una respuesta. Esto puede deberse a filtros de seguridad o un problema temporal.")
+                if response and hasattr(response, 'prompt_feedback'):
+                    st.code(f"Razón del bloqueo: {response.prompt_feedback}")
+                else:
+                    st.code(f"La respuesta de la API estuvo vacía o fue inválida.")
+                return False
 
             json_limpio_str = limpiar_respuesta_json(response.text)
             if json_limpio_str:
@@ -137,18 +146,20 @@ def handle_full_regeneration(model):
                 st.toast("✅ ¡Índice regenerado desde cero con éxito!")
                 return True
             else:
-                st.error("La IA devolvió una respuesta vacía o no válida."); return False
+                st.error("La IA devolvió una respuesta vacía o no válida (después de la limpieza)."); return False
+                
         except json.JSONDecodeError as e:
-            st.error(f"Error de formato: La IA no devolvió un JSON válido. Error: {e}")
-            st.info("Respuesta recibida de la IA que causó el error:")
-            st.code(response.text if 'response' in locals() else "No se pudo obtener la respuesta de la IA.")
+            st.error(f"Error de formato: La IA devolvió una respuesta que no es un JSON válido. Error: {e}")
+            if response:
+                st.info("Respuesta recibida de la IA que causó el error:")
+                st.code(response.text)
             return False
         except Exception as e:
-            st.error(f"Ocurrió un error durante la regeneración completa: {e}")
-            st.info("Respuesta recibida de la IA que causó el error:")
-            st.code(response.text if 'response' in locals() else "No se pudo obtener la respuesta de la IA.")
+            st.error(f"Ocurrió un error inesperado durante la regeneración completa: {e}")
+            if response:
+                st.info("Respuesta recibida de la IA:")
+                st.code(response.text)
             return False
-
 # =============================================================================
 #                        LÓGICA PRINCIPAL (ROUTER)
 # =============================================================================
