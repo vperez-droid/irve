@@ -354,6 +354,7 @@ Te proporcionaré el texto completo del borrador. Debes devolver una versión me
 
 4.  **REGLA DE ORO: NO ELIMINAR CONTENIDO.** Está **ESTRICTAMENTE PROHIBIDO** eliminar párrafos o datos del original. Tu trabajo es **AÑADIR** cohesión. La versión final debe ser LIGERAMENTE MÁS LARGA que la original.
 
+5. ** IMPORTANTE: PALABRAS REPETIDAS **. Trata de evitar la repetición de palabras de forma repetida ya que esto dificulta la lectura del texto, ahí sí que puedes reestructurar y cambiar esa palabra por un sinónimo o formular la frase de otra maner, pero que refleje el mismo contenido.
 Genera únicamente el texto completo y mejorado en formato Markdown.
 """
 
