@@ -101,33 +101,29 @@ def project_selection_page(go_to_landing, go_to_phase1):
 # En ui_pages.py, añade esta nueva función
 # En ui_pages.py, reemplaza tu función con esta versión que usa la lógica que YA FUNCIONA en tu app:
 
-# En ui_pages.py, reemplaza tu función phase_1_viability_page con esta VERSIÓN LOCAL DE PRUEBA:
-
-# En ui_pages.py, reemplaza tu función con esta versión final que corrige el bucle de recarga:
-
-# En tu archivo ui_pages.py, reemplaza la función anterior con esta:
+# En tu archivo ui_pages.py
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
-    # NOTA: Esta versión es la local de prueba que estabas usando, ahora corregida.
-    
     st.markdown(f"<h3>FASE 1: Análisis de Viabilidad</h3>", unsafe_allow_html=True)
-    st.warning("Estás en modo de prueba. Los archivos se suben desde tu ordenador y no se guardan en Drive.")
 
-    if 'local_pliegos' not in st.session_state:
-        st.session_state.local_pliegos = []
-
-    # --- SECCIÓN DE CARGA LOCAL DE ARCHIVOS ---
+    # --- SECCIÓN DE CARGA DE ARCHIVOS ---
     with st.container(border=True):
-        st.subheader("1. Sube los Pliegos desde tu ordenador")
+        st.subheader("1. Sube los Pliegos")
         uploaded_files = st.file_uploader(
             "Arrastra aquí los archivos PDF o DOCX para analizar",
             type=['pdf', 'docx'],
             accept_multiple_files=True,
             key="local_file_uploader"
         )
+        
+        # [CORRECCIÓN 1]: Procesamos los archivos subidos sin forzar un st.rerun()
         if uploaded_files:
+            # Simplemente asignamos los archivos al estado. Streamlit se encarga del resto.
             st.session_state.local_pliegos = uploaded_files
-            st.rerun()
+        
+        # Si no hay archivos en el uploader, pero sí en el estado (porque ya se subieron), los usamos.
+        if 'local_pliegos' not in st.session_state:
+            st.session_state.local_pliegos = []
 
     # --- MOSTRAR ARCHIVOS CARGADOS Y PERMITIR BORRARLOS ---
     if st.session_state.local_pliegos:
@@ -137,7 +133,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             cols[0].write(f"📄 **{file.name}**")
             if cols[1].button("Eliminar", key=f"del_local_{i}"):
                 st.session_state.local_pliegos.pop(i)
-                st.rerun()
+                st.rerun() # Aquí sí es correcto usar rerun para refrescar la lista
     else:
         st.info("Sube uno o más archivos para empezar.")
 
@@ -145,7 +141,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.header("Extracción de Requisitos Clave")
     
     if st.button("Analizar Pliegos y Extraer Requisitos", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
-        with st.spinner("🧠 Analizando archivos locales con la IA..."):
+        with st.spinner("🧠 Analizando archivos con la IA..."):
             response = None
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
@@ -163,60 +159,51 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.write("Feedback del Prompt:", response.prompt_feedback)
                     st.stop()
                 
-                # Limpiamos y cargamos el JSON
                 json_limpio_str = limpiar_respuesta_json(response.text)
                 if json_limpio_str:
                     st.session_state.requisitos_extraidos = json.loads(json_limpio_str)
                     st.toast("✅ ¡Requisitos extraídos con éxito!")
                 else:
                     st.error("La IA devolvió una respuesta vacía o no válida.")
-                    st.session_state.requisitos_extraidos = None # Limpiamos en caso de respuesta inválida
+                    st.session_state.requisitos_extraidos = None
                 
             except Exception as e:
                 st.error(f"Ocurrió un error crítico durante el proceso: {e}")
                 st.error(f"Tipo de error: {type(e).__name__}")
                 if response:
                     st.warning("La IA devolvió una respuesta que causó el error. Contenido:")
-                    st.text(response.text)
+                    st.code(response.text, language='text')
 
-    # =============================================================================
-    #           SECCIÓN DE MOSTRAR RESULTADOS (AQUÍ ESTÁ LA CORRECCIÓN)
-    # =============================================================================
+    # --- SECCIÓN DE MOSTRAR RESULTADOS (A PRUEBA DE ERRORES) ---
     if 'requisitos_extraidos' in st.session_state and st.session_state.requisitos_extraidos:
         requisitos = st.session_state.requisitos_extraidos
 
-        # --- [NUEVO] Herramienta de depuración: Muestra el JSON completo que devolvió la IA ---
         with st.expander("🔍 Ver la respuesta completa de la IA (JSON)"):
             st.json(requisitos)
 
         st.success("Análisis de viabilidad completado:")
         
-        # --- [MODIFICADO] Contenedor de Resumen (a prueba de errores) ---
         with st.container(border=True):
             st.subheader("📊 Resumen de la Licitación")
             
-            # CAMBIO CLAVE: Usamos .get('resumen_licitacion', {})
-            # Si la IA no incluye 'resumen_licitacion', usamos un diccionario vacío {} para evitar el KeyError.
+            # [CORRECCIÓN 2]: Usar .get() para evitar el KeyError. Si no existe la clave, usa un diccionario vacío {}.
             resumen = requisitos.get('resumen_licitacion', {}) 
 
             col1, col2, col3 = st.columns(3)
+            # Usamos .get() de nuevo para cada métrica individual, por si faltan datos dentro del resumen.
             col1.metric("Presupuesto Base", resumen.get('presupuesto_base', 'N/D'))
             col2.metric("Duración Contrato", resumen.get('duracion_contrato', 'N/D'))
             col3.metric("Admite Lotes", resumen.get('admite_lotes', 'N/D'))
 
-        # --- [MODIFICADO] Contenedor de Requisitos Técnicos (a prueba de errores) ---
         with st.container(border=True):
             st.subheader("🛠️ Requisitos Técnicos Clave")
-            
-            # Hacemos lo mismo para 'requisitos_tecnicos', por si acaso.
+            # También usamos .get() aquí por seguridad.
             requisitos_tecnicos = requisitos.get('requisitos_tecnicos', []) 
             if not requisitos_tecnicos:
                 st.info("No se extrajeron requisitos técnicos específicos.")
             else:
                 for req in requisitos_tecnicos:
                     st.markdown(f"- {req}")
-        
-        # ... (Puedes añadir más contenedores para otras claves del JSON de la misma forma segura) ...
 
         st.markdown("---")
         st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
