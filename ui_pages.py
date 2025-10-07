@@ -529,7 +529,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             # --- [CAMBIO CLAVE] ---
             # Usamos el nuevo prompt para Gemini que genera el guion en formato Markdown
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
-            prompt_con_idioma = PROMPT_GEMINI_GUION_PLANIFICACION.format(idioma=idioma_seleccionado)
+            prompt_con_idioma = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma_seleccionado)
             contenido_ia = [prompt_con_idioma]
             
             # El resto del contexto se añade igual que antes
