@@ -657,27 +657,34 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             pliegos_content_for_ia = [{"mime_type": f['mimeType'], "data": download_file_from_drive(service, f['id']).getvalue()} for f in pliegos_files_info]
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
             
-            # ===== INICIO DE LA LÓGICA DE CONTEXTO ESTRATÉGICO =====
+            # ===== INICIO DE LA LÓGICA DE CONTEXTO ESTRATÉGICO (MODIFICADO) =====
             # 1. Obtenemos la estructura estratégica completa de la sesión
             full_structure = st.session_state.generated_structure
             config_licitacion = full_structure.get('configuracion_licitacion', {})
             plan_extension = full_structure.get('plan_extension', [])
 
-            # 2. Buscamos las páginas sugeridas para el apartado principal actual
-            paginas_sugeridas_apartado = "No especificado"
+            # 2. Buscamos las páginas sugeridas para el SUBAPARTADO específico
+            paginas_sugeridas_subapartado = "No especificado" # El valor que realmente necesitamos
             if plan_extension:
-                for item in plan_extension:
-                    if item.get('apartado') == apartado_titulo:
-                        paginas_sugeridas_apartado = item.get('paginas_sugeridas', 'No especificado')
-                        break
+                # Primero, encontramos el apartado principal correcto
+                for item_apartado in plan_extension:
+                    if item_apartado.get('apartado') == apartado_titulo:
+                        # Ahora, buscamos en el desglose de ese apartado
+                        desglose = item_apartado.get('desglose_subapartados', [])
+                        for item_subapartado in desglose:
+                            if item_subapartado.get('subapartado') == subapartado_titulo:
+                                paginas_sugeridas_subapartado = item_subapartado.get('paginas_sugeridas', 'No especificado')
+                                break # Encontramos el subapartado, salimos del bucle interior
+                        break # Encontramos el apartado, salimos del bucle exterior
 
-            # 3. Formateamos el nuevo prompt con toda la información estratégica
+            # 3. Formateamos el nuevo prompt con la información ESTRATÉGICA Y PRECISA
             prompt_final = PROMPT_DESARROLLO.format(
                 idioma=idioma_seleccionado,
                 max_paginas=config_licitacion.get('max_paginas', 'N/D'),
                 reglas_formato=config_licitacion.get('reglas_formato', 'No especificado'),
                 apartado_referencia=apartado_titulo,
-                paginas_sugeridas_apartado=paginas_sugeridas_apartado,
+                # NOTA: pasamos el valor específico del subapartado
+                paginas_sugeridas_subapartado=paginas_sugeridas_subapartado, 
                 subapartado_referencia=subapartado_titulo
             )
             # ===== FIN DE LA LÓGICA DE CONTEXTO ESTRATÉGICO =====
@@ -851,8 +858,6 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase2, use_container_width=True)
     with col_nav3_2:
         st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase4, use_container_width=True)
-        
-# Reemplaza tu función phase_5_page en ui_pages.py con esta versión completa y corregida
 
 def phase_5_page(model, go_to_phase4, go_to_phase6):
     st.markdown("<h3>FASE 5: Redacción del Cuerpo del Documento</h3>", unsafe_allow_html=True)
