@@ -98,20 +98,7 @@ def project_selection_page(go_to_landing, go_to_phase1):
                     st.success(f"¡Proyecto '{new_project_name}' creado! Ya puedes cargar los documentos.")
                     go_to_phase1(); st.rerun()
 
-# En ui_pages.py, añade esta nueva función
-# En ui_pages.py, reemplaza tu función con esta versión que usa la lógica que YA FUNCIONA en tu app:
 
-# En tu archivo ui_pages.py, asegúrate de tener estas importaciones
-import streamlit as st
-import json
-from openai import OpenAI
-import io
-from pypdf import PdfReader
-import docx # <-- Asegúrate de que python-docx está instalado (pip install python-docx)
-from prompts import PROMPT_REQUISITOS_CLAVE
-from utils import agregar_markdown_a_word # <-- Necesitarás esta función de utils.py
-
-# ... el resto de tus importaciones ...
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Viabilidad</h3>", unsafe_allow_html=True)
