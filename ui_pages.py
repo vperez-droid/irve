@@ -291,15 +291,24 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     # Usamos la función que hemos recibido como argumento
     st.button("← Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True, key="back_to_projects")
     
-def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regeneration):
+# Reemplaza tu función phase_2_results_page completa con este código en ui_pages.py
+
+def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regeneration):
     st.markdown("<h3>FASE 2: Revisión de Resultados</h3>", unsafe_allow_html=True)
     st.markdown("Revisa el índice, la guía de redacción y el plan estratégico. Puedes hacer ajustes con feedback, regenerarlo todo desde cero, o aceptarlo para continuar.")
     st.markdown("---")
-    st.button("← Volver a la gestión de archivos", on_click=go_to_phase1)
+    # [CORRECCIÓN NAVEGACIÓN] El botón "Volver" ahora usa go_to_phase2 para ir a la página de estructura/archivos.
+    st.button("← Volver a la gestión de archivos", on_click=go_to_phase2)
 
     if 'generated_structure' not in st.session_state or not st.session_state.generated_structure:
-        st.warning("No se ha generado ninguna estructura.")
+        st.warning("No se ha generado ninguna estructura. Vuelve a la fase anterior para generar una.")
         return
+
+    # --- Herramienta de depuración para ver siempre lo que devuelve la IA ---
+    with st.expander("🔍 Ver la respuesta completa de la IA (JSON) para depuración"):
+        st.json(st.session_state.generated_structure)
+
+    generated_data = st.session_state.generated_structure
 
     def handle_regeneration_with_feedback():
         feedback_text = st.session_state.feedback_area
@@ -335,27 +344,26 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
                 st.error(f"Ocurrió un error durante la regeneración: {e}")
 
     with st.container(border=True):
-        
-        # 1. MUESTRA EL ÍNDICE CON LAS INDICACIONES INTEGRADAS
-        # ----------------------------------------------------------------------
         st.subheader("Índice Propuesto y Guía de Redacción")
         
-        estructura = st.session_state.generated_structure.get('estructura_memoria')
-        matices = st.session_state.generated_structure.get('matices_desarrollo')
+        # [CÓDIGO A PRUEBA DE ERRORES] Usamos .get() con listas vacías como valor por defecto
+        estructura = generated_data.get('estructura_memoria', [])
+        matices = generated_data.get('matices_desarrollo', [])
         
-        # Llama a la función de utils.py que ahora muestra el índice y las indicaciones
-        mostrar_indice_desplegable(estructura, matices)
+        if not estructura:
+            st.warning("La IA no generó una 'estructura_memoria' válida en su respuesta. Revisa el JSON de depuración de arriba.")
+        else:
+            mostrar_indice_desplegable(estructura, matices)
         
-        # 2. MUESTRA EL PLAN ESTRATÉGICO
-        # ----------------------------------------------------------------------
         st.markdown("---")
         st.subheader("📊 Plan Estratégico del Documento")
 
-        config = st.session_state.generated_structure.get('configuracion_licitacion', {})
-        plan = st.session_state.generated_structure.get('plan_extension', [])
+        # [CÓDIGO A PRUEBA DE ERRORES] Usamos .get() con diccionarios o listas vacías
+        config = generated_data.get('configuracion_licitacion', {})
+        plan = generated_data.get('plan_extension', [])
 
         if not config and not plan:
-            st.warning("No se detectaron parámetros estratégicos (páginas, puntos) en los pliegos. Puedes añadirlos mediante feedback.")
+            st.warning("No se detectaron parámetros estratégicos (configuración o plan de extensión) en la respuesta de la IA.")
         else:
             col1, col2 = st.columns(2)
             with col1:
@@ -372,8 +380,6 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
                 st.write("**Distribución de Contenido Sugerida (Páginas por Apartado):**")
                 st.dataframe(plan, use_container_width=True, hide_index=True)
 
-        # 3. MUESTRA LA SECCIÓN DE ACCIONES Y FEEDBACK
-        # ----------------------------------------------------------------------
         st.markdown("---")
         st.subheader("Validación y Siguiente Paso")
         
@@ -387,6 +393,7 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
         with col1:
             st.button("Regenerar con Feedback", on_click=handle_regeneration_with_feedback, use_container_width=True)
         with col2:
+            # La función handle_full_regeneration se pasa como argumento, esto ya estaba bien
             st.button("🔁 Regenerar Todo desde Cero", on_click=lambda: handle_full_regeneration(model), use_container_width=True, help="Descarta este análisis y genera uno nuevo desde cero analizando los pliegos otra vez.")
 
         if st.button("Aceptar y Pasar a Fase 3 →", type="primary", use_container_width=True):
@@ -407,12 +414,11 @@ def phase_2_results_page(model, go_to_phase1, go_to_phase2, handle_full_regenera
                         delete_file_from_drive(service, saved_index_id)
                     upload_file_to_drive(service, mock_file_obj, docs_app_folder_id)
                     st.toast("Análisis final guardado en tu proyecto de Drive.")
-                    go_to_phase2()
+                    # [CORRECCIÓN NAVEGACIÓN] Al aceptar, se llama a go_to_phase3 para ir a la siguiente fase
+                    go_to_phase3()
                     st.rerun()
                 except Exception as e:
                     st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
-                    
-# Reemplaza tu función phase_3_page en ui_pages.py con esta versión completa y corregida
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     USE_GPT_MODEL = True
