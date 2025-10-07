@@ -103,13 +103,14 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 # En ui_pages.py, reemplaza tu función phase_1_viability_page con esta VERSIÓN LOCAL DE PRUEBA:
 
+# En ui_pages.py, reemplaza tu función con esta versión final que corrige el bucle de recarga:
+
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     # NOTA: Esta función se ha modificado para NO USAR GOOGLE DRIVE y así aislar el problema.
     
     st.markdown(f"<h3>FASE 1: Análisis de Viabilidad (Prueba Local sin Drive)</h3>", unsafe_allow_html=True)
     st.warning("Estás en modo de prueba. Los archivos se suben desde tu ordenador y no se guardan en Drive.")
 
-    # Inicializamos una lista en el estado de la sesión para guardar los archivos subidos localmente
     if 'local_pliegos' not in st.session_state:
         st.session_state.local_pliegos = []
 
@@ -123,57 +124,57 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             return ""
         except Exception: return ""
 
-    # --- SECCIÓN DE CARGA LOCAL DE ARCHIVOS ---
+    # --- INICIO DE LA CORRECCIÓN CLAVE ---
+
+    # 1. Definimos una función callback que se ejecutará SOLO cuando los archivos cambien
+    def handle_file_upload():
+        # Los archivos subidos están disponibles en el estado de la sesión bajo la clave del widget
+        if st.session_state.local_file_uploader:
+            st.session_state.local_pliegos = st.session_state.local_file_uploader
+
     with st.container(border=True):
         st.subheader("1. Sube los Pliegos desde tu ordenador")
-        uploaded_files = st.file_uploader(
+        # 2. Usamos el parámetro 'on_change' para llamar a nuestra función de forma segura
+        st.file_uploader(
             "Arrastra aquí los archivos PDF o DOCX para analizar",
             type=['pdf', 'docx'],
             accept_multiple_files=True,
-            key="local_file_uploader"
+            key="local_file_uploader",
+            on_change=handle_file_upload # ¡Esta es la corrección!
         )
-        # Si el usuario sube nuevos archivos, los guardamos en el estado de la sesión
-        if uploaded_files:
-            st.session_state.local_pliegos = uploaded_files
-            # Forzamos un rerun para limpiar el widget de subida y mostrar la lista de abajo
-            st.rerun()
+    
+    # 3. ELIMINAMOS el bloque 'if uploaded_files:' que causaba el bucle.
+    # El callback y el estado de la sesión ya se encargan de todo.
 
-    # --- MOSTRAR ARCHIVOS CARGADOS Y PERMITIR BORRARLOS ---
+    # --- FIN DE LA CORRECCIÓN CLAVE ---
+
     if st.session_state.local_pliegos:
         st.success("Archivos cargados y listos para analizar:")
         for i, file in enumerate(st.session_state.local_pliegos):
             cols = st.columns([4, 1])
             cols[0].write(f"📄 **{file.name}**")
-            # Botón para eliminar un archivo de la lista
             if cols[1].button("Eliminar", key=f"del_local_{i}"):
                 st.session_state.local_pliegos.pop(i)
                 st.rerun()
     else:
         st.info("Sube uno o más archivos para empezar.")
 
-
     st.markdown("---")
     st.header("Extracción de Requisitos Clave")
     
-    # El botón se activa solo si hay archivos cargados
     if st.button("Analizar Pliegos y Extraer Requisitos", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
         with st.spinner("🧠 Analizando archivos locales con la IA..."):
             response = None
             try:
-                # Usamos la lógica de envío directo de archivos que ya sabemos que es la más robusta
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
                 prompt_con_idioma = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
                 contenido_ia = [prompt_con_idioma]
                 
-                # Bucle para añadir cada archivo subido localmente
                 for file in st.session_state.local_pliegos:
                     st.info(f"Enviando archivo a la IA: {file.name}...")
-                    # Obtenemos el tipo y los datos directamente del objeto UploadedFile
                     contenido_ia.append({"mime_type": file.type, "data": file.getvalue()})
 
-                # Forzamos la respuesta JSON
                 generation_config = {"response_mime_type": "application/json"}
-                
                 response = model.generate_content(contenido_ia, generation_config=generation_config)
 
                 if not response.candidates:
@@ -182,10 +183,8 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.stop()
                 
                 respuesta_texto = response.text
-                
                 st.session_state.requisitos_extraidos = json.loads(respuesta_texto)
                 st.toast("✅ ¡Requisitos extraídos con éxito!")
-                # No hacemos rerun para poder ver el resultado directamente
                 
             except Exception as e:
                 st.error(f"Ocurrió un error crítico durante el proceso: {e}")
@@ -194,7 +193,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.warning("El error ocurrió después de recibir esta respuesta de la IA:")
                     st.write(response)
 
-    # --- MOSTRAR RESULTADOS (la lógica no cambia) ---
     if 'requisitos_extraidos' in st.session_state and st.session_state.requisitos_extraidos:
         requisitos = st.session_state.requisitos_extraidos
         st.success("Análisis de viabilidad completado:")
@@ -205,14 +203,11 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             col1.metric("Presupuesto Base", resumen.get('presupuesto_base', 'N/D'))
             col2.metric("Duración Contrato", resumen.get('duracion_contrato', 'N/D'))
             col3.metric("Admite Lotes", resumen.get('admite_lotes', 'N/D'))
-            # ... (el resto del código para mostrar los resultados no necesita cambios)
         st.markdown("---")
-        # El botón de continuar a la Fase 2 no tiene sentido en este modo de prueba, pero lo dejamos
         st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
 
     st.write("")
     st.markdown("---")
-    # Este botón sí es importante para poder salir del modo de prueba
     st.button("← Volver a Selección de Proyecto", on_click=go_to_project_selection, use_container_width=True)
 # =============================================================================
 # =============================================================================
