@@ -101,23 +101,21 @@ def project_selection_page(go_to_landing, go_to_phase1):
 # En ui_pages.py, añade esta nueva función
 # En ui_pages.py, reemplaza tu función con esta versión que usa la lógica que YA FUNCIONA en tu app:
 
-# En tu archivo ui_pages.py, asegúrate de tener estas importaciones al principio
+# En tu archivo ui_pages.py, asegúrate de tener estas importaciones
 import streamlit as st
 import json
-from openai import OpenAI # <--- IMPORTANTE: Añade OpenAI
+from openai import OpenAI
 import io
 from pypdf import PdfReader
-import docx
+import docx # <-- Asegúrate de que python-docx está instalado (pip install python-docx)
 from prompts import PROMPT_REQUISITOS_CLAVE
-from utils import limpiar_respuesta_json
+from utils import agregar_markdown_a_word # <-- Necesitarás esta función de utils.py
 
-# ... (el resto de tus importaciones) ...
+# ... el resto de tus importaciones ...
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
-    # 'model' (Gemini) ya no se usa aquí, pero lo mantenemos por consistencia en la firma de la función
-    
-    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad (con OpenAI)</h3>", unsafe_allow_html=True)
-    st.info("Ahora esta fase utiliza el modelo de OpenAI (GPT) para el análisis.")
+    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad</h3>", unsafe_allow_html=True)
+    st.info("Ahora esta fase genera un documento .docx con el análisis para evitar errores de formato.")
 
     # --- Lógica de carga de archivos (sin cambios) ---
     with st.container(border=True):
@@ -140,6 +138,9 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             cols[0].write(f"📄 **{file.name}**")
             if cols[1].button("Eliminar", key=f"del_local_{i}"):
                 st.session_state.local_pliegos.pop(i)
+                # Limpiamos el buffer del documento si se elimina un archivo
+                if 'analysis_doc_buffer' in st.session_state:
+                    del st.session_state['analysis_doc_buffer']
                 st.rerun()
     else:
         st.info("Sube uno o más archivos para empezar.")
@@ -147,17 +148,14 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown("---")
     st.header("Extracción de Requisitos Clave")
     
-    # --- LÓGICA DEL BOTÓN MODIFICADA PARA USAR OPENAI ---
-    if st.button("Analizar Pliegos y Extraer Requisitos", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
-        with st.spinner("🧠 Analizando archivos con OpenAI (GPT)..."):
-            
-            # 1. Intentamos inicializar el cliente de OpenAI
+    # --- [CAMBIO CLAVE] LÓGICA DEL BOTÓN AHORA GENERA UN DOCX ---
+    if st.button("Analizar Pliegos y Generar Documento de Análisis", type="primary", use_container_width=True, disabled=not st.session_state.local_pliegos):
+        with st.spinner("🧠 Analizando documentos y generando el informe .docx..."):
             try:
                 client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
             except Exception:
-                st.error("Error: 'OPENAI_API_KEY' no encontrada en los secretos de Streamlit (secrets.toml)."); st.stop()
+                st.error("Error: 'OPENAI_API_KEY' no encontrada en los secretos de Streamlit."); st.stop()
 
-            # 2. Extraemos el texto de todos los archivos subidos
             contexto_documentos = ""
             for file in st.session_state.local_pliegos:
                 try:
@@ -165,78 +163,62 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     texto_extraido = ""
                     if file.name.endswith('.pdf'):
                         reader = PdfReader(io.BytesIO(bytes_data))
-                        texto_extraido = "\n".join(page.extract_text() for page in reader.pages)
+                        texto_extraido = "\n".join(page.extract_text() for page in reader.pages if page.extract_text())
                     elif file.name.endswith('.docx'):
                         doc = docx.Document(io.BytesIO(bytes_data))
                         texto_extraido = "\n".join(para.text for para in doc.paragraphs)
-                    
-                    contexto_documentos += f"--- INICIO DEL DOCUMENTO: {file.name} ---\n{texto_extraido}\n--- FIN DEL DOCUMENTO: {file.name} ---\n\n"
+                    contexto_documentos += f"--- DOCUMENTO: {file.name} ---\n{texto_extraido}\n--- FIN ---\n\n"
                 except Exception as e:
-                    st.warning(f"No se pudo procesar el archivo '{file.name}': {e}")
+                    st.warning(f"No se pudo procesar '{file.name}': {e}")
             
             if not contexto_documentos.strip():
-                st.error("No se pudo extraer texto de los documentos subidos. Asegúrate de que no estén vacíos o protegidos."); st.stop()
+                st.error("No se pudo extraer texto de los documentos."); st.stop()
 
-            # 3. Hacemos la llamada a la API de OpenAI
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
                 prompt_sistema = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
                 
                 response = client.chat.completions.create(
-                    model="gpt-4o-mini", # O el modelo que prefieras, ej: "gpt-4-turbo"
-                    response_format={"type": "json_object"}, # <--- Forzamos la salida a JSON
+                    model="gpt-4o-mini",
+                    # Ya no forzamos la salida a JSON
                     messages=[
                         {"role": "system", "content": prompt_sistema},
                         {"role": "user", "content": contexto_documentos}
                     ],
-                    temperature=0.1
+                    temperature=0.2
                 )
                 
-                json_string_respuesta = response.choices[0].message.content
+                texto_analisis = response.choices[0].message.content
                 
-                if json_string_respuesta:
-                    st.session_state.requisitos_extraidos = json.loads(json_string_respuesta)
-                    st.toast("✅ ¡Requisitos extraídos con éxito usando OpenAI!")
-                else:
-                    st.error("OpenAI devolvió una respuesta vacía.")
-                    st.session_state.requisitos_extraidos = None
-            
+                # --- Creación del documento DOCX en memoria ---
+                documento = docx.Document()
+                # Usamos la función que ya tienes para convertir Markdown a Word
+                agregar_markdown_a_word(documento, texto_analisis)
+
+                # Guardar el documento en un buffer de memoria
+                buffer = io.BytesIO()
+                documento.save(buffer)
+                buffer.seek(0)
+
+                # Guardar el buffer en el estado de la sesión para el botón de descarga
+                st.session_state.analysis_doc_buffer = buffer
+                st.session_state.analysis_doc_filename = "Analisis_de_Viabilidad.docx"
+                
+                st.toast("✅ ¡Documento de análisis generado con éxito!")
+
             except Exception as e:
-                st.error(f"Ocurrió un error crítico durante el proceso con OpenAI: {e}")
+                st.error(f"Ocurrió un error crítico durante el análisis con OpenAI: {e}")
                 st.error(f"Tipo de error: {type(e).__name__}")
+                # Limpiamos el buffer si hay un error
+                if 'analysis_doc_buffer' in st.session_state:
+                    del st.session_state['analysis_doc_buffer']
 
-    # --- La sección de mostrar resultados no necesita cambios, ya es robusta ---
-    if 'requisitos_extraidos' in st.session_state and st.session_state.requisitos_extraidos:
-        requisitos = st.session_state.requisitos_extraidos
 
-        with st.expander("🔍 Ver la respuesta completa de la IA (JSON)"):
-            st.json(requisitos)
-
-        st.success("Análisis de viabilidad completado:")
-        
-        with st.container(border=True):
-            st.subheader("📊 Resumen de la Licitación")
-            resumen = requisitos.get('resumen_licitacion', {}) 
-            col1, col2, col3 = st.columns(3)
-            col1.metric("Presupuesto Base", resumen.get('presupuesto_base', 'N/D'))
-            col2.metric("Duración Contrato", resumen.get('duracion_contrato', 'N/D'))
-            col3.metric("Admite Lotes", resumen.get('admite_lotes', 'N/D'))
-
-        with st.container(border=True):
-            st.subheader("🛠️ Requisitos Técnicos Clave")
-            requisitos_tecnicos = requisitos.get('requisitos_tecnicos', []) 
-            if not requisitos_tecnicos:
-                st.info("No se extrajeron requisitos técnicos específicos.")
-            else:
-                for req in requisitos_tecnicos:
-                    st.markdown(f"- {req}")
-
-        st.markdown("---")
-        st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
-
-    st.write("")
-    st.markdown("---")
-    st.button("← Volver a Selección de Proyecto", on_click=go_to_project_selection, use_container_width=True)
+    # --- [CAMBIO CLAVE] SECCIÓN DE RESULTADOS AHORA MUESTRA UN BOTÓN DE DESCARGA ---
+    if 'analysis_doc_buffer' in st.session_state and st.session_state.analysis_doc_buffer:
+        st.success("El análisis se ha completado. Ya puedes descargar el informe.")
+        st.download_button(
+            label="📄 Descargar Informe de Viabilidad (.docx)",
 # =============================================================================
 # =============================================================================
 #           FASE 2: ANÁLISIS Y ESTRUCTURA (ESTA ES LA FUNCIÓN QUE FALTA)
