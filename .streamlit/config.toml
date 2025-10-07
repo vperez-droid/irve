@@ -1,1 +1,57 @@
+# .streamlit/config.toml
 
+# ==============================================================================
+#                      TEMA VISUAL DE LA APLICACIÓN
+# ==============================================================================
+# Esta sección define los colores y la fuente para darle a tu app
+# una apariencia consistente y profesional, basada en tus diseños HTML.
+# ==============================================================================
+
+[theme]
+
+# Color principal para elementos interactivos como botones, selectores, etc.
+primaryColor = "#0046C6"  # Tu azul corporativo
+
+# Color de fondo principal de la aplicación.
+backgroundColor = "#F9F7F5"  # Tu blanco roto, más suave a la vista
+
+# Color de fondo para elementos como la barra lateral y los expanders.
+secondaryBackgroundColor = "#F0F2F5" # Un gris muy claro y neutro
+
+# Color del texto principal.
+textColor = "#262626"  # Tu negro/gris oscuro, mejora la legibilidad
+
+# Fuente a utilizar. 'Urbanist' es la que usaste en tus HTML.
+# Streamlit la cargará desde Google Fonts. 'sans serif' es la alternativa si falla.
+font = "Urbanist"
+
+
+# ==============================================================================
+#                      CONFIGURACIÓN DEL SERVIDOR
+# ==============================================================================
+# Opciones recomendadas para el despliegue en Streamlit Cloud.
+# ==============================================================================
+
+[server]
+
+# Se recomienda poner a 'true' para despliegues. Evita que el navegador
+# se abra automáticamente al ejecutar el script localmente.
+headless = true
+
+# Desactiva la recolección de información de uso para mayor privacidad.
+gatherUsageStats = false
+
+
+# ==============================================================================
+#                  OPCIONES DEL MENÚ DE LA APLICACIÓN
+# ==============================================================================
+# Esto personaliza el menú de "hamburguesa" (⋮) en la esquina superior derecha.
+# ==============================================================================
+
+[ui]
+
+# Oculta el texto "View app source" y "Report a bug" si no los necesitas.
+# Es útil para una apariencia más limpia en producción.
+# Descomenta las líneas que quieras activar quitando el '#' del principio.
+# hideTopBar = false
+# hideSidebarNav = false
