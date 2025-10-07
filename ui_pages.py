@@ -430,7 +430,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     go_to_phase3() # Llama a la función para ir a la siguiente fase.
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Ocurrió un error durante la sincronización o guardado: {e}
+                    st.error(f"Ocurrió un error durante la sincronización o guardado: {e})
 
         # 3. MUESTRA LA SECCIÓN DE ACCIONES Y FEEDBACK
         # ----------------------------------------------------------------------
