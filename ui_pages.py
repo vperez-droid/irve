@@ -853,11 +853,15 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
 
     st.markdown("---")
     st.button("🚀 Unificar y Guardar Plan de Prompts Conjunto", on_click=handle_conjunto_generation, use_container_width=True, type="primary", help="Unifica todos los planes individuales generados en un único archivo maestro.")
+    
+    # --- [BLOQUE CORREGIDO] ---
     col_nav3_1, col_nav3_2 = st.columns(2)
     with col_nav3_1:
-        st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase2, use_container_width=True)
+        # El botón de volver a F3 ahora usa la función correcta: go_to_phase3
+        st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase3, use_container_width=True)
     with col_nav3_2:
-        st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase4, use_container_width=True)
+        # El botón de ir a F5 ahora usa la función correcta: go_to_phase5
+        st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
 
 def phase_5_page(model, go_to_phase4, go_to_phase6):
     st.markdown("<h3>FASE 5: Redacción del Cuerpo del Documento</h3>", unsafe_allow_html=True)
