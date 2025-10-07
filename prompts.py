@@ -90,7 +90,7 @@ Debes explicar todo como si el que fuera a leer las indicaciones no supiera nada
 }
 """
 
-# prompt.py - VERSIÓN MEJORADA DE PROMPT_PLIEGOS
+# EN prompts.py
 
 PROMPT_PLIEGOS = """
 # TAREA: Analizar documentos de licitación y generar una estructura JSON.
@@ -147,11 +147,13 @@ El idioma principal para la memoria es: {idioma}.
   "plan_extension": [
     {{
       "apartado": "1. Introducción y Contexto",
-      "paginas_sugeridas": 2
+      "paginas_sugeridas": 2,
+      "puntuacion_sugerida": "10 puntos [o 'N/D']"
     }},
     {{
       "apartado": "2. Solución Propuesta",
-      "paginas_sugeridas": 15
+      "paginas_sugeridas": 15,
+      "puntuacion_sugerida": "45 puntos [o 'N/D']"
     }}
   ]
 }}
@@ -161,10 +163,16 @@ El idioma principal para la memoria es: {idioma}.
 - **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato. Si no los encuentras, indica 'N/D'.
 - **estructura_memoria**: Crea un índice detallado y lógico. Basa los apartados y subapartados en los requisitos y criterios de evaluación de los documentos.
 - **matices_desarrollo**: Para cada subapartado, proporciona indicaciones claras sobre qué escribir, a qué puntos de los pliegos hacer referencia y qué palabras clave usar para mejorar la puntuación.
-- **plan_extension**: Distribuye el número máximo de páginas de forma lógica entre los apartados principales.
+# --- INICIO DEL CAMBIO ---
+- **plan_extension**: Para cada apartado principal, realiza dos tareas:
+    1.  Distribuye el número máximo de páginas de forma lógica.
+    2.  Busca en los criterios de valoración la puntuación o el peso porcentual asignado a ese apartado y añádelo en 'puntuacion_sugerida'. Si no encuentras una puntuación específica para un apartado, indica 'N/D'.
+# --- FIN DEL CAMBIO ---
 
 Ahora, analiza los documentos adjuntos y genera el objeto JSON completo.
 """
+
+
 
 PROMPT_PREGUNTAS_TECNICAS = """
 Actúa como un planificador de licitación. Te quieres presentar a una licitación y debes crear un documento enfocando el contenido que aparecerá en este para que tus compañeros vean tu propuesta
