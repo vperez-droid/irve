@@ -459,6 +459,8 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 except Exception as e:
                     st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
                     
+# Reemplaza tu función phase_3_page en ui_pages.py con esta versión más robusta
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     USE_GPT_MODEL = True
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
@@ -477,23 +479,47 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.rerun()
             else:
                 st.warning("No se ha encontrado un índice guardado. Por favor, vuelve a la Fase 2 para generar uno.")
-                if st.button("← Ir a Fase 2"): go_to_phase1(); st.rerun()
+                if st.button("← Ir a Fase 2"): go_to_phase2_results(); st.rerun() # Corregido para ir a F2-Resultados
                 return
         except Exception as e:
             st.error(f"Error al cargar el índice desde Drive: {e}")
             return
+    
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
     if not estructura: st.error("La estructura JSON no contiene la clave 'estructura_memoria'."); return
+    
+    # --- [BLOQUE DE LÓGICA MEJORADO] ---
     subapartados_a_mostrar = []
-    for seccion in estructura:
-        apartado_principal = seccion.get('apartado', 'Sin Título')
-        for subapartado_titulo in seccion.get('subapartados', []):
-            matiz_existente = matices_dict.get(subapartado_titulo)
-            if matiz_existente: subapartados_a_mostrar.append(matiz_existente)
-            else: subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
-    if not subapartados_a_mostrar: st.warning("El índice no contiene subapartados."); return
+    # Comprobamos si CUALQUIER sección del índice tiene subapartados
+    hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
+
+    if hay_subapartados:
+        # LÓGICA ORIGINAL: Si hay subapartados, los mostramos
+        for seccion in estructura:
+            apartado_principal = seccion.get('apartado', 'Sin Título')
+            for subapartado_titulo in seccion.get('subapartados', []):
+                matiz_existente = matices_dict.get(subapartado_titulo)
+                if matiz_existente: subapartados_a_mostrar.append(matiz_existente)
+                else: subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
+    else:
+        # LÓGICA NUEVA: Si NO hay subapartados, usamos los apartados principales
+        st.info("El índice no contiene subapartados. Se mostrarán los apartados principales para la generación de guiones.")
+        for seccion in estructura:
+            apartado_titulo = seccion.get('apartado')
+            if apartado_titulo:
+                # Simulamos la estructura que el resto de la página espera, usando el título del apartado
+                subapartados_a_mostrar.append({
+                    "apartado": apartado_titulo,
+                    "subapartado": apartado_titulo, # Usamos el mismo título para la clave 'subapartado'
+                    "indicaciones": f"Generar guion para el apartado principal: {apartado_titulo}"
+                })
+    # --- [FIN DEL BLOQUE MEJORADO] ---
+
+    if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
+
+    # El resto de la función no necesita cambios...
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, show_toast=True):
         nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", titulo)
         nombre_archivo = nombre_limpio + ".docx"
@@ -617,8 +643,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                             else:
                                 if ejecutar_generacion_con_gemini(model, subapartado_titulo, matiz): st.rerun()
                                 
-    # --- [BLOQUE CORREGIDO] ---
-    # Los botones ahora usan las funciones correctas que se pasaron como argumentos
     st.markdown("---")
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1: 
