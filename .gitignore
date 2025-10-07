@@ -1,0 +1,43 @@
+# ==============================================================================
+#                 .gitignore para el Asistente de Licitaciones
+# ==============================================================================
+# Este archivo le indica a Git qué ficheros y carpetas ignorar.
+
+# ------------------------------------------------------------------------------
+# ARCHIVOS DE SECRETOS DE STREAMLIT (¡¡MUY IMPORTANTE!!)
+# ------------------------------------------------------------------------------
+# NUNCA, BAJO NINGUNA CIRCUNSTANCIA, subas tu archivo de secretos a un
+# repositorio. Contiene tus claves de API y es un riesgo de seguridad enorme.
+# Los secretos se gestionan en el panel de Streamlit Cloud.
+.streamlitsecrets.toml
+
+
+# ------------------------------------------------------------------------------
+# FICHEROS TEMPORALES GENERADOS POR LA APLICACIÓN
+# ------------------------------------------------------------------------------
+# Ignora las imágenes temporales que se crean al convertir HTML.
+# No forman parte del código fuente.
+.png
+
+
+# ------------------------------------------------------------------------------
+# FICHEROS Y CARPETAS DE PYTHON
+# ------------------------------------------------------------------------------
+# Ignora la caché de Python, que se genera automáticamente.
+__pycache__
+.pyc
+.pyo
+.pyd
+
+# Ignora los entornos virtuales. Las dependencias se gestionan con requirements.txt
+.venv
+venv
+env
+
+
+# ------------------------------------------------------------------------------
+# ARCHIVOS DE CONFIGURACIÓN DE EDITORES DE CÓDIGO (OPCIONAL PERO RECOMENDADO)
+# ------------------------------------------------------------------------------
+# Evita subir configuraciones personales de tu editor (ej VS Code).
+.vscode
+.idea
