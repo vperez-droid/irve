@@ -105,15 +105,16 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 # Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión que lee desde Google Drive
 
+# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión mejorada
+
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Viabilidad desde Google Drive</h3>", unsafe_allow_html=True)
+    ANALYSIS_FILENAME = "Analisis_de_Viabilidad.docx"
 
     # --- 1. Verificación de sesión y conexión con Drive ---
     if not st.session_state.get('selected_project'):
         st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
-        if st.button("← Ir a Selección de Proyecto"):
-            go_to_project_selection()
-            st.rerun()
+        go_to_project_selection(); st.rerun()
         st.stop()
     
     project_name = st.session_state.selected_project['name']
@@ -122,99 +123,121 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     
     st.info(f"Proyecto activo: **{project_name}**. Se analizarán los documentos de la carpeta 'Pliegos'.")
 
-    # --- 2. Mostrar archivos de la carpeta 'Pliegos' y permitir subir nuevos ---
+    # --- 2. Gestión de archivos en 'Pliegos' (sin cambios) ---
     with st.container(border=True):
         st.subheader("1. Documentos en tu Proyecto")
         
         with st.spinner("Buscando archivos en Google Drive..."):
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
-            # Guardamos los archivos encontrados en el estado para no recargarlos constantemente
-            st.session_state.pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
+            documentos_pliegos = get_files_in_project(service, pliegos_folder_id)
 
-        if st.session_state.pliegos_en_drive:
+        if documentos_pliegos:
             st.success("Se analizarán los siguientes archivos encontrados en la carpeta 'Pliegos':")
-            for file_info in st.session_state.pliegos_en_drive:
+            for file_info in documentos_pliegos:
                 st.write(f"📄 **{file_info['name']}**")
         else:
             st.warning("No se encontraron archivos en la carpeta 'Pliegos'. Sube al menos un documento para continuar.")
 
-        # Opción para subir más archivos directamente a Drive
         with st.expander("Subir nuevos documentos a 'Pliegos'"):
             uploaded_files = st.file_uploader(
                 "Arrastra aquí los archivos que quieras añadir al proyecto",
-                type=['pdf', 'docx'],
-                accept_multiple_files=True,
-                key="drive_file_uploader"
+                type=['pdf', 'docx'], accept_multiple_files=True, key="drive_file_uploader"
             )
             if st.button("Guardar en Drive y Refrescar"):
                 if uploaded_files:
                     with st.spinner("Subiendo archivos a Drive..."):
-                        for file_obj in uploaded_files:
-                            upload_file_to_drive(service, file_obj, pliegos_folder_id)
-                    st.toast("¡Archivos subidos! La lista se ha actualizado.")
-                    st.rerun()
+                        for file_obj in uploaded_files: upload_file_to_drive(service, file_obj, pliegos_folder_id)
+                    st.toast("¡Archivos subidos!"); st.rerun()
 
     st.markdown("---")
     st.header("Extracción de Requisitos Clave")
+
+    # --- 3. Lógica de Generación, Guardado y Estado ---
+    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
     
-    # --- 3. Lógica de análisis usando los archivos de Drive con Gemini ---
-    if st.button("Analizar Pliegos de Drive y Generar Documento", type="primary", use_container_width=True, disabled=not st.session_state.pliegos_en_drive):
+    # Comprobamos si el archivo ya existe en Drive y guardamos su ID en el estado
+    # Usamos una clave de sesión para evitar buscar en Drive en cada rerun
+    if 'analysis_doc_id' not in st.session_state:
+        st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
+
+    # Función interna para no repetir código
+    def generate_and_save_analysis():
         with st.spinner("🧠 Descargando y analizando documentos con Gemini..."):
             try:
-                idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                prompt_con_idioma = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma_seleccionado)
+                idioma = st.session_state.get('project_language', 'Español')
+                prompt = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma)
                 
-                contenido_ia = [prompt_con_idioma]
-                # Descargamos cada archivo de Drive y lo preparamos para Gemini
-                for file_info in st.session_state.pliegos_en_drive:
-                    file_content_bytes_io = download_file_from_drive(service, file_info['id'])
-                    contenido_ia.append({
-                        "mime_type": file_info['mimeType'], 
-                        "data": file_content_bytes_io.getvalue()
-                    })
+                contenido_ia = [prompt]
+                for file_info in documentos_pliegos:
+                    file_bytes_io = download_file_from_drive(service, file_info['id'])
+                    contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
 
                 response = model.generate_content(contenido_ia)
-                
                 if not response.candidates:
-                    st.error("Gemini no generó una respuesta."); st.stop()
+                    st.error("Gemini no generó una respuesta."); return
 
-                texto_analisis = response.text
-                
                 documento = docx.Document()
-                agregar_markdown_a_word(documento, texto_analisis)
-
+                agregar_markdown_a_word(documento, response.text)
                 buffer = io.BytesIO()
                 documento.save(buffer)
                 buffer.seek(0)
-
-                st.session_state.analysis_doc_buffer = buffer
-                st.session_state.analysis_doc_filename = "Analisis_de_Viabilidad_Drive.docx"
                 
-                st.toast("✅ ¡Documento de análisis generado con éxito!")
+                # Preparamos el buffer para la subida
+                buffer.name = ANALYSIS_FILENAME
+                buffer.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                
+                # Si estamos re-generando, borramos el archivo antiguo primero
+                if st.session_state.get('analysis_doc_id'):
+                    delete_file_from_drive(service, st.session_state['analysis_doc_id'])
+
+                # Subimos el nuevo archivo y actualizamos el estado de la sesión
+                new_file_id = upload_file_to_drive(service, buffer, docs_app_folder_id)
+                st.session_state.analysis_doc_id = new_file_id
+                st.toast("✅ ¡Análisis guardado en tu Drive!")
                 st.rerun()
 
             except Exception as e:
                 st.error(f"Ocurrió un error crítico durante el análisis: {e}")
 
-    # --- 4. Mostrar botón de descarga y permitir avanzar a la siguiente fase ---
-    if 'analysis_doc_buffer' in st.session_state and st.session_state.analysis_doc_buffer:
-        st.success("El análisis se ha completado. Ya puedes descargar el informe.")
-        st.download_button(
-            label="📄 Descargar Informe de Viabilidad (.docx)",
-            data=st.session_state.analysis_doc_buffer,
-            file_name=st.session_state.analysis_doc_filename,
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True
-        )
+    # --- 4. UI Condicional: Muestra botones según si el archivo existe ---
+    if st.session_state.analysis_doc_id:
+        # ESTADO: El análisis YA EXISTE
+        st.success("✔️ Ya existe un análisis de viabilidad guardado en tu proyecto de Drive.")
         
-        st.info("Revisa el documento. Si todo es correcto, puedes continuar a la siguiente fase para generar la estructura de la memoria.")
-        st.markdown("---")
-        # El botón clave para avanzar en el flujo de la aplicación
-        st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
+        # Opción de descarga
+        if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
+            with st.spinner("Descargando desde Drive..."):
+                file_bytes = download_file_from_drive(service, st.session_state.analysis_doc_id)
+                # Creamos un segundo botón de descarga que aparece tras pulsar el primero
+                st.download_button(
+                    label="¡Listo! Haz clic aquí para descargar",
+                    data=file_bytes,
+                    file_name=ANALYSIS_FILENAME,
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True
+                )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.button("🔁 Re-generar Análisis", on_click=generate_and_save_analysis, use_container_width=True, disabled=not documentos_pliegos)
+        with col2:
+            st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
+
+    else:
+        # ESTADO: El análisis NO EXISTE
+        st.info("Aún no se ha generado el documento de análisis para este proyecto.")
+        st.button(
+            "Analizar Pliegos y Generar Documento", 
+            on_click=generate_and_save_analysis, 
+            type="primary", 
+            use_container_width=True, 
+            disabled=not documentos_pliegos
+        )
 
     st.write("")
     st.markdown("---")
     st.button("← Volver a Selección de Proyecto", on_click=go_to_project_selection, use_container_width=True)
+    
 # =============================================================================
 # =============================================================================
 #           FASE 2: ANÁLISIS Y ESTRUCTURA (ESTA ES LA FUNCIÓN QUE FALTA)
