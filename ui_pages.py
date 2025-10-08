@@ -328,6 +328,10 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
         st.button("↩️ Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True, key="back_to_projects")
     
 
+# =============================================================================
+#           FASE 2: REVISIÓN DE RESULTADOS (VERSIÓN CORREGIDA)
+# =============================================================================
+
 def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regeneration):
     st.markdown("<h3>FASE 2: Revisión de Resultados</h3>", unsafe_allow_html=True)
     st.markdown("Revisa el índice, la guía de redacción y el plan estratégico. Puedes hacer ajustes con feedback, regenerarlo todo desde cero, o aceptarlo para continuar.")
@@ -348,30 +352,68 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
                 prompt_con_idioma = PROMPT_REGENERACION.format(idioma=idioma_seleccionado)
-                contenido_ia_regeneracion = [prompt_con_idioma]
-                contenido_ia_regeneracion.append("--- INSTRUCCIONES DEL USUARIO ---\n" + feedback_text)
-                contenido_ia_regeneracion.append("--- ESTRUCTURA JSON ANTERIOR A CORREGIR ---\n" + json.dumps(st.session_state.generated_structure, indent=2))
+                
+                contenido_ia_regeneracion = [
+                    prompt_con_idioma,
+                    "--- INSTRUCCIONES DEL USUARIO ---\n" + feedback_text,
+                    "--- ESTRUCTURA JSON ANTERIOR A CORREGIR ---\n" + json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False)
+                ]
                 
                 if st.session_state.get('uploaded_pliegos'):
                     service = st.session_state.drive_service
+                    st.write("Analizando documentos de referencia para la regeneración...") # Feedback para el usuario
+                    
+                    # --- [CAMBIO INICIA] ---
+                    # Este es el bloque de código corregido que ahora maneja XLSX correctamente.
                     for file_info in st.session_state.uploaded_pliegos:
                         file_content_bytes = download_file_from_drive(service, file_info['id'])
-                        contenido_ia_regeneracion.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
+                        nombre_archivo = file_info['name']
+                        
+                        if nombre_archivo.lower().endswith('.xlsx'):
+                            # 1. Si es un Excel, se convierte a texto CSV.
+                            st.write(f"⚙️ Procesando Excel para regeneración: {nombre_archivo}...")
+                            texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
+                            if texto_csv:
+                                contenido_ia_regeneracion.append(texto_csv)
+                        
+                        else:
+                            # 2. Para PDF, DOCX y otros formatos soportados, se envía de forma nativa.
+                            contenido_ia_regeneracion.append({
+                                "mime_type": file_info['mimeType'], 
+                                "data": file_content_bytes.getvalue()
+                            })
+                    # --- [CAMBIO TERMINA] ---
 
                 generation_config = genai.GenerationConfig(response_mime_type="application/json")
                 response_regeneracion = model.generate_content(contenido_ia_regeneracion, generation_config=generation_config)
+                
+                if not response_regeneracion.candidates:
+                    st.error("La IA no generó una respuesta. Esto puede deberse a filtros de seguridad.")
+                    if hasattr(response_regeneracion, 'prompt_feedback'):
+                        st.code(f"Razón del bloqueo: {response_regeneracion.prompt_feedback}")
+                    return
+
                 json_limpio_str_regenerado = limpiar_respuesta_json(response_regeneracion.text)
                 
                 if json_limpio_str_regenerado:
                     st.session_state.generated_structure = json.loads(json_limpio_str_regenerado)
-                    st.toast("¡Estructura regenerada con feedback!")
-                    st.session_state.feedback_area = ""
+                    st.toast("¡Estructura regenerada con tu feedback!")
+                    st.session_state.feedback_area = "" # Limpia el área de texto
                     st.rerun()
                 else:
-                    st.error("La IA no devolvió una estructura válida tras la regeneración.")
-            except Exception as e:
-                st.error(f"Ocurrió un error durante la regeneración: {e}")
+                    st.error("La IA no devolvió una estructura JSON válida tras la regeneración.")
+                    st.info("Respuesta recibida de la IA:")
+                    st.code(response_regeneracion.text)
 
+            except json.JSONDecodeError as e:
+                st.error(f"Error de formato: La IA devolvió una respuesta que no es un JSON válido. Error: {e}")
+                if 'response_regeneracion' in locals():
+                    st.info("Respuesta recibida de la IA que causó el error:")
+                    st.code(response_regeneracion.text)
+            except Exception as e:
+                st.error(f"Ocurrió un error crítico durante la regeneración: {e}")
+
+    # --- El resto de la UI de la página (sin cambios) ---
     with st.container(border=True):
         
         st.subheader("Índice Propuesto y Guía de Redacción")
@@ -404,7 +446,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
             if plan:
                 st.write("**Distribución de Contenido Sugerida (Páginas y Puntuación por Apartado):**")
                 
-                # Preparamos los datos para el DataFrame
                 display_data = []
                 for item in plan:
                     display_data.append({
@@ -413,7 +454,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                         'Puntuación / Peso': item.get('puntuacion_sugerida', 'N/D')
                     })
                 
-                # Creamos el DataFrame y lo mostramos
                 df_display = pd.DataFrame(display_data)
                 st.dataframe(df_display, use_container_width=True, hide_index=True)
 
@@ -430,7 +470,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
         with col1:
             st.button("Regenerar con Feedback", on_click=handle_regeneration_with_feedback, use_container_width=True)
         with col2:
-            st.button("🔁 Regenerar Todo desde Cero", on_click=lambda: handle_full_regeneration(model), use_container_width=True, help="Descarta este análisis y genera uno nuevo.")
+            st.button("🔁 Regenerar Todo desde Cero", on_click=lambda: handle_full_regeneration(model), use_container_width=True, help="Descarta este análisis y genera uno nuevo leyendo los archivos desde cero.")
 
         if st.button("Aceptar y Pasar a Fase 3 →", type="primary", use_container_width=True):
             with st.spinner("Sincronizando carpetas y guardando análisis final en Drive..."):
