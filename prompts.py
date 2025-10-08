@@ -262,7 +262,6 @@ Debes rellenar la siguiente estructura de tabla. No te desvíes de este formato.
 Ahora, procede a crear la **TABLA DE PLANIFICACIÓN** para el subapartado proporcionado. Recuerda: solo la tabla.
 """
 
-PROMPT_REGENERACION = # prompts.py
 
 PROMPT_REGENERACION = """
 Actúas como un editor experto que refina una estructura JSON para una memoria técnica.
