@@ -262,6 +262,8 @@ Debes rellenar la siguiente estructura de tabla. No te desvíes de este formato.
 Ahora, procede a crear la **TABLA DE PLANIFICACIÓN** para el subapartado proporcionado. Recuerda: solo la tabla.
 """
 
+PROMPT_REGENERACION = # prompts.py
+
 PROMPT_REGENERACION = """
 Actúas como un editor experto que refina una estructura JSON para una memoria técnica.
 Te proporcionaré TRES elementos clave:
@@ -270,18 +272,20 @@ Te proporcionaré TRES elementos clave:
 3.  Las INSTRUCCIONES DE UN USUARIO con los cambios que desea.
 
 Tu única tarea es generar una **NUEVA VERSIÓN MEJORADA** del objeto JSON que incorpore a la perfección los cambios solicitados por el usuario.
-Escribe el contenido solicitado en **idioma: {idioma}**.
-**ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
-Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato relacionado con criterios económicos o evaluables por fórmula (precio, ofertas económicas, descuentos, reducción de plazos de entrega, ampliación de plazos de garantía, etc.). La memoria técnica solo debe contener información sobre juicios de valor. Cualquier mención a los criterios de fórmula es motivo de exclusión directa de la licitación. Céntrate únicamente en desarrollar los aspectos técnicos y de calidad solicitados.
-## REGLAS OBLIGATORIAS:
--   **MANTÉN TODAS LAS REGLAS DEL PROMPT ORIGINAL:** El formato de salida debe seguir siendo un JSON válido con las claves "estructura_memoria" y "matices_desarrollo", la numeración debe ser correcta (1, 1.1, etc.), y las indicaciones deben ser detalladas.
--   **INCORPORA EL FEEDBACK:** Lee atentamente las instrucciones del usuario y aplícalas a la nueva estructura. Por ejemplo, si pide "une los apartados 1.1 y 1.2", debes hacerlo. Si pide "el apartado 2 debe hablar sobre la experiencia del equipo", debes modificar las indicaciones de ese apartado.
--   **NO PIERDAS INFORMACIÓN:** Si el usuario solo pide cambiar el apartado 3, los apartados 1, 2, 4, etc., deben permanecer intactos en la nueva versión.
--   **SÉ PRECISO:** No inventes nuevos apartados a menos que el usuario te lo pida explícitamente. Céntrate únicamente en aplicar las correcciones solicitadas.
--   **FEEDBACK COMPLETO:** Ten en cuenta que el feedback del usuario puede referirse a la `estructura_memoria`, los `matices_desarrollo`, la `configuracion_licitacion` o el `plan_extension`. Asegúrate de actualizar el JSON completo con los cambios solicitados.
-Genera únicamente el objeto JSON corregido. No incluyas ningún texto fuera de él.
-"""
 
+**ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
+Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato relacionado con criterios económicos o evaluables por fórmula. Céntrate únicamente en desarrollar los aspectos técnicos y de calidad solicitados.
+
+## REGLAS OBLIGATORIAS:
+
+-   **REGLA DE IDIOMA CRÍTICA E INNEGOCIABLE:** La totalidad del JSON de salida, incluyendo todos los valores de las claves como "apartado", "subapartado", "indicaciones", etc., DEBE estar redactada exclusivamente en el siguiente idioma: **{idioma}**. Ignora por completo el idioma del JSON que te doy como entrada; tu salida DEBE ser obligatoriamente en **{idioma}**.
+-   **MANTÉN EL FORMATO ORIGINAL:** El formato de salida debe seguir siendo un JSON válido y completo, manteniendo todas las claves y la estructura del prompt original (`titulo_memoria`, `configuracion_licitacion`, `estructura_memoria`, `matices_desarrollo`, `plan_extension`).
+-   **INCORPORA EL FEEDBACK:** Lee atentamente las instrucciones del usuario y aplícalas a la nueva estructura. Por ejemplo, si pide "une los apartados 1.1 y 1.2", debes hacerlo. Si pide "reajusta la distribución de páginas a un máximo de 40", debes modificar el `plan_extension`.
+-   **NO PIERDAS INFORMACIÓN:** Si el usuario solo pide cambiar el apartado 3, los apartados 1, 2, 4, etc., deben permanecer intactos en la nueva versión (aunque traducidos al idioma solicitado).
+-   **SÉ PRECISO:** No inventes nuevos apartados a menos que el usuario te lo pida explícitamente. Céntrate únicamente en aplicar las correcciones solicitadas.
+
+Genera únicamente el objeto JSON corregido y completo. No incluyas ningún texto fuera de él.
+"""
 
 PROMPT_DESARROLLO = """
 **SYSTEM DIRECTIVE: YOUR ENTIRE RESPONSE MUST BE A SINGLE, VALID JSON OBJECT. ALL TEXT WITHIN THE JSON MUST BE IN THIS LANGUAGE: {idioma}. YOU ARE A CONTENT ARCHITECT, NOT A CONSULTANT. YOUR JOB IS TO DECONSTRUCT, NOT TO ANALYZE OR EVALUATE.**
