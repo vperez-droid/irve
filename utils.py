@@ -8,12 +8,56 @@ import json
 import docx
 import imgkit
 from pypdf import PdfReader
+import pandas as pd
 
 # =============================================================================
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
 # =============================================================================
 
 # --- NUEVA FUNCIÓN MÁS ROBUSTA ---
+
+def convertir_excel_a_texto_csv(archivo_excel_bytes, nombre_archivo):
+    """
+    Lee los bytes de un archivo Excel (.xlsx) y convierte todas sus hojas a una
+    única cadena de texto en formato CSV.
+
+    Args:
+        archivo_excel_bytes (io.BytesIO): El contenido del archivo Excel en bytes.
+        nombre_archivo (str): El nombre original del archivo para dar contexto.
+
+    Returns:
+        str: Una cadena de texto con el contenido de todas las hojas en formato CSV.
+    """
+    try:
+        # Usamos pandas.ExcelFile para poder inspeccionar las hojas del archivo
+        xls = pd.ExcelFile(archivo_excel_bytes)
+        texto_final_csv = ""
+
+        # Si hay más de una hoja, iteramos sobre cada una
+        if len(xls.sheet_names) > 1:
+            texto_final_csv += f"--- Inicio del contenido del archivo Excel '{nombre_archivo}' (múltiples hojas) ---\n\n"
+            for nombre_hoja in xls.sheet_names:
+                df = pd.read_excel(xls, sheet_name=nombre_hoja)
+                # Añadimos un encabezado para que la IA sepa de qué hoja vienen los datos
+                texto_final_csv += f"--- Contenido de la Hoja: '{nombre_hoja}' ---\n"
+                # Convertimos el DataFrame a un string CSV, sin el índice de pandas
+                texto_final_csv += df.to_csv(index=False)
+                texto_final_csv += "\n\n"
+            texto_final_csv += f"--- Fin del contenido del archivo Excel '{nombre_archivo}' ---\n"
+        # Si solo hay una hoja, la procesamos directamente
+        else:
+            df = pd.read_excel(xls)
+            texto_final_csv += f"--- Inicio del contenido del archivo Excel '{nombre_archivo}' ---\n"
+            texto_final_csv += df.to_csv(index=False)
+            texto_final_csv += f"\n--- Fin del contenido del archivo Excel '{nombre_archivo}' ---\n"
+            
+        return texto_final_csv
+
+    except Exception as e:
+        # Si algo falla, devolvemos un mensaje de error claro
+        st.error(f"No se pudo procesar el archivo Excel '{nombre_archivo}': {e}")
+        return ""
+        
 def limpiar_respuesta_json(texto_sucio):
     """
     Limpia de forma muy agresiva la respuesta de texto de la IA para extraer un objeto JSON válido.
