@@ -12,7 +12,7 @@ import json
 import time
 
 # =============================================================================
-#           BLOQUE DE IMPORTACIONES DE OTROS MÓDulos
+#           BLOQUE DE IMPORTACIONES DE OTROS MÓDULOS
 # =============================================================================
 
 from auth import get_credentials, build_drive_service
@@ -20,16 +20,19 @@ from auth import get_credentials, build_drive_service
 from ui_pages import (
     landing_page, 
     project_selection_page,
-    phase_1_viability_page, # Nueva fase
-    phase_2_structure_page, # Antigua phase_1_page
-    phase_2_results_page,   # Antigua phase_1_results_page
-    phase_3_page,           # Antigua phase_2_page
-    phase_4_page,           # Antigua phase_3_page
-    phase_5_page,           # Antigua phase_4_page
-    phase_6_page            # Antigua phase_5_page
+    phase_1_viability_page,
+    phase_2_structure_page,
+    phase_2_results_page,
+    phase_3_page,
+    phase_4_page,
+    phase_5_page,
+    phase_6_page
 )
 from prompts import PROMPT_PLIEGOS
-from utils import limpiar_respuesta_json
+
+# [CAMBIO 1] Se importa la nueva función para convertir Excel junto a la que ya existía.
+from utils import limpiar_respuesta_json, convertir_excel_a_texto_csv
+
 from drive_utils import find_or_create_folder, get_files_in_project, download_file_from_drive
 
 # =============================================================================
@@ -39,7 +42,6 @@ from drive_utils import find_or_create_folder, get_files_in_project, download_fi
 st.set_page_config(layout="wide")
 
 # --- Inicialización de Estado ---
-# Es crucial para que la app recuerde en qué página está y guarde datos entre interacciones.
 if 'page' not in st.session_state: st.session_state.page = 'landing'
 if 'credentials' not in st.session_state: st.session_state.credentials = None
 if 'drive_service' not in st.session_state: st.session_state.drive_service = None
@@ -56,7 +58,6 @@ if 'refined_doc_filename' not in st.session_state: st.session_state.refined_doc_
 
 
 # --- Funciones de Navegación (NUEVO FLUJO) ---
-# Estas funciones modifican el estado para cambiar de página.
 def go_to_landing(): st.session_state.page = 'landing'
 def go_to_project_selection(): st.session_state.page = 'project_selection'
 def go_to_phase1(): st.session_state.page = 'phase_1_viability'
@@ -84,18 +85,10 @@ def back_to_project_selection_and_cleanup():
 #           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
 # =============================================================================
 
-# =============================================================================
-#           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
-# =============================================================================
-
-# =============================================================================
-#           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
-# =============================================================================
-
 def handle_full_regeneration(model):
     """
     Función que genera un índice desde cero analizando los archivos de 'Pliegos'.
-    Esta función se usa en la FASE 2.
+    Esta función se usa en la FASE 2 y AHORA es compatible con XLSX.
     """
     if not st.session_state.get('drive_service') or not st.session_state.get('selected_project'):
         st.error("Error de sesión. No se puede iniciar la regeneración."); return False
@@ -115,9 +108,22 @@ def handle_full_regeneration(model):
             prompt_con_idioma = PROMPT_PLIEGOS.format(idioma=idioma_seleccionado)
             contenido_ia = [prompt_con_idioma]
 
+            # --- [CAMBIO 2 - INICIO DE LA LÓGICA MODIFICADA] ---
+            # Se itera sobre los archivos y se procesan según su tipo.
             for file in document_files:
                 file_content_bytes = download_file_from_drive(service, file['id'])
-                contenido_ia.append({"mime_type": file['mimeType'], "data": file_content_bytes.getvalue()})
+                nombre_archivo = file['name']
+                
+                if nombre_archivo.lower().endswith('.xlsx'):
+                    # Si es un Excel, se convierte a texto CSV.
+                    st.write(f"⚙️ Procesando Excel para el índice: {nombre_archivo}...")
+                    texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
+                    if texto_csv:
+                        contenido_ia.append(texto_csv)
+                else:
+                    # Para PDF y DOCX, se mantiene el análisis nativo.
+                    contenido_ia.append({"mime_type": file['mimeType'], "data": file_content_bytes.getvalue()})
+            # --- [CAMBIO 2 - FIN DE LA LÓGICA MODIFICADA] ---
 
             try:
                 response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
@@ -157,6 +163,7 @@ def handle_full_regeneration(model):
                 st.info("Respuesta recibida de la IA:")
                 st.code(response.text)
             return False
+
 # =============================================================================
 #                        LÓGICA PRINCIPAL (ROUTER)
 # =============================================================================
@@ -194,7 +201,6 @@ else:
     page = st.session_state.page
     
     if page == 'project_selection':
-        # De aquí, el usuario irá a la Fase 1 de Viabilidad
         project_selection_page(go_to_landing, go_to_phase1)
         
     elif page == 'phase_1_viability':
