@@ -977,79 +977,188 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
     with col_nav3_2:
         st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
 
+# =============================================================================
+#           FUNCIÓN DE AYUDA PARA LA GESTIÓN DE ERRORES DE API
+# =============================================================================
+
+def enviar_mensaje_con_reintentos(chat, prompt, max_reintentos=5, espera_inicial_segundos=15):
+    """
+    Envía un mensaje a un chat de Gemini, gestionando automáticamente los errores de 
+    límite de velocidad (429) con una estrategia de reintentos con espera exponencial.
+    """
+    intentos = 0
+    while intentos < max_reintentos:
+        try:
+            # Pausa preventiva para no saturar la API. Esencial en bucles rápidos.
+            time.sleep(1.5) 
+            
+            # Intenta enviar el mensaje
+            response = chat.send_message(prompt)
+            return response
+
+        except google.api_core.exceptions.ResourceExhausted as e:
+            # Error 429: Se ha excedido la cuota de tokens por minuto.
+            intentos += 1
+            # La espera se duplica en cada reintento (15s, 30s, 60s...)
+            tiempo_de_espera = espera_inicial_segundos * (2 ** (intentos - 1))
+            
+            st.warning(
+                f"Límite de velocidad de la API alcanzado. "
+                f"Pausando durante {tiempo_de_espera} segundos... (Intento {intentos}/{max_reintentos})"
+            )
+            time.sleep(tiempo_de_espera)
+
+        except Exception as e:
+            # Para cualquier otro error (filtros de seguridad, problemas de conexión, etc.),
+            # fallamos inmediatamente para no malgastar reintentos.
+            st.error(f"Error crítico en la API durante el envío: {e}")
+            return None # Devuelve None para indicar un fallo irrecuperable
+
+    # Si el bucle termina, significa que hemos superado todos los reintentos.
+    st.error(f"No se pudo completar la solicitud después de {max_reintentos} intentos. "
+             "La API sigue ocupada. Intenta de nuevo más tarde.")
+    return None
+
+# =============================================================================
+#           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
+# =============================================================================
+
 def phase_5_page(model, go_to_phase4, go_to_phase6):
     st.markdown("<h3>FASE 5: Redacción del Cuerpo del Documento</h3>", unsafe_allow_html=True)
     st.markdown("Ejecuta el plan de prompts para generar el contenido completo de la memoria técnica.")
     st.markdown("---")
+    
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
     plan_conjunto_id = find_file_by_name(service, "plan_de_prompts_conjunto.json", docs_app_folder_id)
+
     if not plan_conjunto_id:
-        st.warning("No se ha encontrado un 'plan_de_prompts_conjunto.json'. Vuelve a la Fase 3 para generarlo.")
-        if st.button("← Ir a Fase 3"): go_to_phase3(); st.rerun() # Esta navegación específica está bien
+        st.warning("No se ha encontrado un 'plan_de_prompts_conjunto.json'. Vuelve a la Fase 4 para generarlo.")
+        if st.button("← Ir a Fase 4"): go_to_phase4(); st.rerun()
         return
+
     try:
         json_bytes = download_file_from_drive(service, plan_conjunto_id).getvalue()
         plan_de_accion = json.loads(json_bytes.decode('utf-8'))
         lista_de_prompts = plan_de_accion.get("plan_de_prompts", [])
-        lista_de_prompts.sort(key=lambda x: natural_sort_key(x.get('prompt_id', '')))
+        if lista_de_prompts:
+            lista_de_prompts.sort(key=lambda x: natural_sort_key(x.get('prompt_id', '')))
         st.success(f"✔️ Plan de acción cargado. Se ejecutarán {len(lista_de_prompts)} prompts.")
-    except Exception as e: st.error(f"Error al cargar o procesar el plan de acción: {e}"); return
+    except Exception as e:
+        st.error(f"Error al cargar o procesar el plan de acción: {e}")
+        return
+
     button_text = "🔁 Volver a Generar Cuerpo del Documento" if st.session_state.get("generated_doc_buffer") else "🚀 Iniciar Redacción y Generar Cuerpo"
+    
     if st.button(button_text, type="primary", use_container_width=True):
-        if not lista_de_prompts: st.warning("El plan de acción está vacío."); return
+        if not lista_de_prompts:
+            st.warning("El plan de acción está vacío. No hay nada que ejecutar.")
+            return
+            
         generation_successful = False
         documento = docx.Document()
+        
         try:
             with st.spinner("Iniciando redacción... Esto puede tardar varios minutos."):
                 chat_redaccion = model.start_chat()
                 progress_bar = st.progress(0, text="Configurando sesión de chat...")
-                ultimo_apartado_escrito = None; ultimo_subapartado_escrito = None
+                ultimo_apartado_escrito = None
+                ultimo_subapartado_escrito = None
+
                 for i, tarea in enumerate(lista_de_prompts):
                     progress_text = f"Procesando Tarea {i+1}/{len(lista_de_prompts)}: {tarea.get('subapartado_referencia', 'N/A')}"
                     progress_bar.progress((i + 1) / len(lista_de_prompts), text=progress_text)
-                    apartado_actual = tarea.get("apartado_referencia"); subapartado_actual = tarea.get("subapartado_referencia")
+                    
+                    apartado_actual = tarea.get("apartado_referencia")
+                    subapartado_actual = tarea.get("subapartado_referencia")
+
                     if apartado_actual and apartado_actual != ultimo_apartado_escrito:
-                        if ultimo_apartado_escrito is not None: documento.add_page_break()
-                        documento.add_heading(apartado_actual, level=1); ultimo_apartado_escrito = apartado_actual; ultimo_subapartado_escrito = None
+                        if ultimo_apartado_escrito is not None:
+                            documento.add_page_break()
+                        documento.add_heading(apartado_actual, level=1)
+                        ultimo_apartado_escrito = apartado_actual
+                        ultimo_subapartado_escrito = None
+                    
                     if subapartado_actual and subapartado_actual != ultimo_subapartado_escrito:
-                        documento.add_heading(subapartado_actual, level=2); ultimo_subapartado_escrito = subapartado_actual
-                    respuesta_ia_bruta = ""; prompt_actual = tarea.get("prompt_para_asistente")
-                    if prompt_actual: response = chat_redaccion.send_message(prompt_actual); respuesta_ia_bruta = response.text; time.sleep(1)
+                        documento.add_heading(subapartado_actual, level=2)
+                        ultimo_subapartado_escrito = subapartado_actual
+
+                    respuesta_ia_bruta = ""
+                    prompt_actual = tarea.get("prompt_para_asistente")
+                    
+                    if prompt_actual:
+                        # --- [CAMBIO CLAVE] Se usa la nueva función con reintentos ---
+                        response = enviar_mensaje_con_reintentos(chat_redaccion, prompt_actual)
+                        
+                        if not response:
+                            st.error("La generación se ha detenido debido a un error persistente en la API.")
+                            generation_successful = False
+                            break # Detiene el bucle for
+                        
+                        respuesta_ia_bruta = response.text
+                        # -----------------------------------------------------------
+
                     es_html = ("HTML" in tarea.get("prompt_id", "").upper() or "VISUAL" in tarea.get("prompt_id", "").upper() or respuesta_ia_bruta.strip().startswith(('<!DOCTYPE html>', '<div', '<table')))
+                    
                     if es_html:
                         html_puro = limpiar_respuesta_final(respuesta_ia_bruta)
                         image_file = html_a_imagen(wrap_html_fragment(html_puro), f"temp_img_{i}.png")
-                        if image_file and os.path.exists(image_file): documento.add_picture(image_file, width=docx.shared.Inches(6.5)); os.remove(image_file)
-                        else: documento.add_paragraph("[ERROR AL GENERAR IMAGEN DESDE HTML]")
+                        if image_file and os.path.exists(image_file):
+                            documento.add_picture(image_file, width=docx.shared.Inches(6.5))
+                            os.remove(image_file)
+                        else:
+                            documento.add_paragraph("[ERROR AL GENERAR IMAGEN DESDE HTML]")
                     else:
+
                         texto_limpio = limpiar_respuesta_final(respuesta_ia_bruta)
                         texto_corregido = corregir_numeracion_markdown(texto_limpio)
-                        if texto_corregido: agregar_markdown_a_word(documento, texto_corregido)
-                generation_successful = True
-        except Exception as e: st.error(f"Ocurrió un error crítico durante la generación del cuerpo: {e}")
+                        if texto_corregido:
+                            agregar_markdown_a_word(documento, texto_corregido)
+                else: # Este 'else' se ejecuta solo si el bucle 'for' termina sin un 'break'
+                    generation_successful = True
+
+        except Exception as e:
+            st.error(f"Ocurrió un error crítico durante la generación del cuerpo: {e}")
+            generation_successful = False
+
         if generation_successful:
             project_name = st.session_state.selected_project['name']
             safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
             nombre_archivo_final = f"Cuerpo_Memoria_Tecnica_{safe_project_name}.docx"
-            doc_io = io.BytesIO(); documento.save(doc_io); doc_io.seek(0)
+            
+            doc_io = io.BytesIO()
+            documento.save(doc_io)
+            doc_io.seek(0)
+            
             st.session_state.generated_doc_buffer = doc_io
             st.session_state.generated_doc_filename = nombre_archivo_final
-            st.success("¡Cuerpo del documento generado con éxito!"); st.rerun()
+            st.success("¡Cuerpo del documento generado con éxito!")
+            st.rerun()
+
     if st.session_state.get("generated_doc_buffer"):
         st.info("El cuerpo del documento está listo para descargar o para el ensamblaje final.")
-        st.download_button(label="📄 Descargar Cuerpo del Documento (.docx)", data=st.session_state.generated_doc_buffer, file_name=st.session_state.generated_doc_filename, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+        st.download_button(
+            label="📄 Descargar Cuerpo del Documento (.docx)",
+            data=st.session_state.generated_doc_buffer,
+            file_name=st.session_state.generated_doc_filename,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
+        )
     
-    # --- [BLOQUE CORREGIDO] ---
-    # Los botones ahora usan las funciones correctas que se pasaron como argumentos
     st.markdown("---")
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1: 
         st.button("← Volver a Fase 4 (Plan de Prompts)", on_click=go_to_phase4, use_container_width=True)
     with col_nav2: 
-        st.button("Ir a Ensamblaje Final (F6) →", on_click=go_to_phase6, use_container_width=True, type="primary", disabled=not st.session_state.get("generated_doc_buffer"))
-
+        st.button(
+            "Ir a Ensamblaje Final (F6) →", 
+            on_click=go_to_phase6, 
+            use_container_width=True, 
+            type="primary", 
+            disabled=not st.session_state.get("generated_doc_buffer")
+        )
+        
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
     st.markdown("<h3>FASE 5: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
     st.markdown("Este es el último paso. Se añadirá un índice y una introducción profesional al documento.")
