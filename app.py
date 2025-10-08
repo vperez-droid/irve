@@ -85,11 +85,7 @@ def back_to_project_selection_and_cleanup():
 #           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
 # =============================================================================
 
-# En app.py
-
-# ... (Asegúrate de que estas importaciones están al principio del archivo)
-from utils import limpiar_respuesta_json, convertir_excel_a_texto_csv, convertir_docx_a_texto
-# ...
+# En app.p
 
 def handle_full_regeneration(model):
     """
