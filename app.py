@@ -12,7 +12,7 @@ import json
 import time
 
 # =============================================================================
-#           BLOQUE DE IMPORTACIONES DE OTROS MÓDULOS
+#           BLOQUE DE IMPORTACIONES DE OTROS MÓDulos
 # =============================================================================
 
 from auth import get_credentials, build_drive_service
@@ -30,7 +30,7 @@ from ui_pages import (
 )
 from prompts import PROMPT_PLIEGOS
 
-# [CAMBIO 1] Se importa la nueva función para convertir Excel junto a la que ya existía.
+# Se importa la función para convertir Excel.
 from utils import limpiar_respuesta_json, convertir_excel_a_texto_csv
 
 from drive_utils import find_or_create_folder, get_files_in_project, download_file_from_drive
@@ -74,7 +74,7 @@ def back_to_project_selection_and_cleanup():
     keys_to_clear = [
         'requisitos_extraidos', 'generated_structure', 'uploaded_pliegos', 
         'selected_project', 'generated_doc_buffer', 'refined_doc_buffer', 
-        'generated_doc_filename', 'refined_doc_filename'
+        'generated_doc_filename', 'refined_doc_filename', 'project_language' # Se añade el idioma a la limpieza
     ]
     for key in keys_to_clear:
         if key in st.session_state:
@@ -85,8 +85,6 @@ def back_to_project_selection_and_cleanup():
 #           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
 # =============================================================================
 
-# En app.p
-
 def handle_full_regeneration(model):
     """
     Función que genera un índice desde cero analizando los archivos de 'Pliegos'.
@@ -95,7 +93,7 @@ def handle_full_regeneration(model):
     if not st.session_state.get('drive_service') or not st.session_state.get('selected_project'):
         st.error("Error de sesión. No se puede iniciar la regeneración."); return False
 
-    with st.spinner("Descargando archivos de 'Pliegiegos' y re-analizando para generar índice..."):
+    with st.spinner("Descargando archivos de 'Pliegos' y re-analizando para generar índice..."):
         response = None
         try:
             service = st.session_state.drive_service
@@ -110,35 +108,25 @@ def handle_full_regeneration(model):
             prompt_con_idioma = PROMPT_PLIEGOS.format(idioma=idioma_seleccionado)
             contenido_ia = [prompt_con_idioma]
 
-            # --- [INICIO DE LA LÓGICA CORREGIDA Y ROBUSTA] ---
             for file in document_files:
                 file_content_bytes = download_file_from_drive(service, file['id'])
                 nombre_archivo = file['name']
                 
                 if nombre_archivo.lower().endswith('.xlsx'):
-                    # 1. Si es un Excel, se convierte a texto CSV.
                     st.write(f"⚙️ Procesando Excel para el índice: {nombre_archivo}...")
                     texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
                     if texto_csv:
                         contenido_ia.append(texto_csv)
                 
-                elif nombre_archivo.lower().endswith('.docx'):
-                    # 2. Si es un Word, se convierte a texto plano.
-                    st.write(f"⚙️ Procesando Word para el índice: {nombre_archivo}...")
-                    texto_word = convertir_docx_a_texto(file_content_bytes, nombre_archivo)
-                    if texto_word:
-                        contenido_ia.append(texto_word)
-                        
+                # --- [CORRECCIÓN] ---
+                # Se elimina el bloque 'elif' para .docx que llamaba a una función inexistente.
+                # El bloque 'else' ya maneja correctamente DOCX y PDF de forma nativa con Gemini.
                 else:
-                    # 3. Para todo lo demás (asumimos que es PDF), se envía de forma nativa.
-                    # Este bloque SÍ es seguro porque ya hemos filtrado los formatos no soportados.
                     contenido_ia.append({"mime_type": file['mimeType'], "data": file_content_bytes.getvalue()})
-            # --- [FIN DE LA LÓGICA CORREGIDA] ---
 
             try:
                 response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
             except Exception as api_error:
-                # Este bloque de error es el que te está saltando ahora. Con la corrección, no debería volver a pasar.
                 st.error(f"Error Crítico durante la llamada a la API de Gemini.")
                 st.info("Esto puede ocurrir por contenido en los documentos que activa un filtro de seguridad o por un formato inválido.")
                 st.write("Detalles del error de la librería:")
@@ -174,25 +162,23 @@ def handle_full_regeneration(model):
                 st.info("Respuesta recibida de la IA:")
                 st.code(response.text)
             return False
+
 # =============================================================================
 #                        LÓGICA PRINCIPAL (ROUTER)
 # =============================================================================
 
-# 1. Intenta obtener las credenciales del usuario.
 credentials = get_credentials()
 
-# 2. Si no hay credenciales, muestra la página de inicio de sesión.
 if not credentials:
     landing_page()
 else:
-    # 3. Si hay credenciales, configura los servicios (una sola vez).
     try:
         if 'drive_service' not in st.session_state or st.session_state.drive_service is None:
             st.session_state.drive_service = build_drive_service(credentials)
         
         if 'gemini_model' not in st.session_state:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            st.session_state.gemini_model = genai.GenerativeModel('models/gemini-2.5-flash')
+            st.session_state.gemini_model = genai.GenerativeModel('models/gemini-2.5-flash') # Modelo actualizado a 2.5 Flash
 
         model = st.session_state.gemini_model
 
@@ -202,12 +188,36 @@ else:
         st.button("Reintentar conexión", on_click=go_to_landing)
         st.stop()
         
-    # Si acabamos de iniciar sesión, pasamos a la selección de proyecto.
     if st.session_state.page == 'landing':
         go_to_project_selection()
         st.rerun()
 
-    # 4. Router: Llama a la función de la página actual según el estado.
+    # --- [NUEVO CÓDIGO - BARRA LATERAL] ---
+    # Se muestra en todas las páginas una vez que se ha cargado un proyecto.
+    if st.session_state.get('selected_project') and st.session_state.page != 'project_selection':
+        with st.sidebar:
+            st.header(f"Proyecto Activo")
+            st.info(st.session_state.selected_project['name'])
+            st.markdown("---")
+            
+            # Inicializa el idioma si no existe, para evitar errores
+            if 'project_language' not in st.session_state:
+                st.session_state.project_language = 'Español'
+            
+            # Selector de idioma persistente que guarda su estado
+            st.selectbox(
+                "Idioma del Proyecto:",
+                ('Español', 'Inglés', 'Catalán', 'Gallego', 'Francés', 'Euskera'),
+                key='project_language'
+            )
+            st.markdown("---")
+            
+            if st.button("↩️ Volver a Selección de Proyecto", use_container_width=True):
+                back_to_project_selection_and_cleanup()
+                st.rerun()
+    # --- [FIN DEL NUEVO CÓDIGO] ---
+
+    # Router: Llama a la función de la página actual según el estado.
     page = st.session_state.page
     
     if page == 'project_selection':
@@ -238,5 +248,3 @@ else:
         st.error(f"Página '{page}' no reconocida. Volviendo a la selección de proyecto.")
         go_to_project_selection()
         st.rerun()
-
-
