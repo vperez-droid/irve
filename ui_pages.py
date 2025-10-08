@@ -4,6 +4,7 @@ import json
 import openai
 from openai import OpenAI
 import google.generativeai as genai
+import google.api_core.exceptions
 import io
 import re
 import os
