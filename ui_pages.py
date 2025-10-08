@@ -101,11 +101,45 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 
 
-# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión para Gemini
+# =============================================================================
+#           BLOQUE DE IMPORTACIONES EN ui_pages.py (al principio del archivo)
+# =============================================================================
+# (Asegúrate de que estas importaciones estén al inicio de tu archivo ui_pages.py)
+import streamlit as st
+import pandas as pd
+import json
+import openai
+from openai import OpenAI
+import google.generativeai as genai
+import io
+import re
+import os
+import time
+import docx
+from pypdf import PdfReader
+from prompts import (
+PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
+)
+from drive_utils import (
+    find_or_create_folder, get_files_in_project, delete_file_from_drive,
+    upload_file_to_drive, find_file_by_name, download_file_from_drive,
+    sync_guiones_folders_with_index, list_project_folders, ROOT_FOLDER_NAME
+)
+# IMPORTACIÓN CORREGIDA Y AMPLIADA
+from utils import (
+    mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
+    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
+    corregir_numeracion_markdown, generar_indice_word,
+    natural_sort_key,
+    convertir_excel_a_texto_csv # <-- ¡IMPORTANTE! Se añade la nueva función.
+)
 
-# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión que lee desde Google Drive
+# ... (Aquí irían tus otras funciones de página como landing_page, project_selection_page, etc.)
 
-# Reemplaza tu función phase_1_viability_page en ui_pages.py con esta versión mejorada
+
+# =============================================================================
+#           FUNCIÓN phase_1_viability_page (COMPLETA Y MODIFICADA)
+# =============================================================================
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Viabilidad desde Google Drive</h3>", unsafe_allow_html=True)
@@ -123,7 +157,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     
     st.info(f"Proyecto activo: **{project_name}**. Se analizarán los documentos de la carpeta 'Pliegos'.")
 
-    # --- 2. Gestión de archivos en 'Pliegos' (sin cambios) ---
+    # --- 2. Gestión de archivos en 'Pliegos' ---
     with st.container(border=True):
         st.subheader("1. Documentos en tu Proyecto")
         
@@ -141,7 +175,9 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         with st.expander("Subir nuevos documentos a 'Pliegos'"):
             uploaded_files = st.file_uploader(
                 "Arrastra aquí los archivos que quieras añadir al proyecto",
-                type=['pdf', 'docx'], accept_multiple_files=True, key="drive_file_uploader"
+                # [CAMBIO 1] Se añade 'xlsx' a los tipos de archivo permitidos.
+                type=['pdf', 'docx', 'xlsx'], 
+                accept_multiple_files=True, key="drive_file_uploader"
             )
             if st.button("Guardar en Drive y Refrescar"):
                 if uploaded_files:
@@ -155,8 +191,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     # --- 3. Lógica de Generación, Guardado y Estado ---
     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
     
-    # Comprobamos si el archivo ya existe en Drive y guardamos su ID en el estado
-    # Usamos una clave de sesión para evitar buscar en Drive en cada rerun
     if 'analysis_doc_id' not in st.session_state:
         st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
 
@@ -170,7 +204,22 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 contenido_ia = [prompt]
                 for file_info in documentos_pliegos:
                     file_bytes_io = download_file_from_drive(service, file_info['id'])
-                    contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
+                    
+                    # --- [CAMBIO 2 - INICIO DE LA NUEVA LÓGICA] ---
+                    # Se implementa un condicional para tratar cada tipo de archivo.
+                    nombre_archivo = file_info['name']
+                    
+                    if nombre_archivo.lower().endswith('.xlsx'):
+                        # Si es un Excel, lo convertimos a texto CSV usando la nueva función.
+                        st.write(f"⚙️ Procesando Excel: {nombre_archivo}...")
+                        texto_csv = convertir_excel_a_texto_csv(file_bytes_io, nombre_archivo)
+                        if texto_csv:
+                            # Añadimos el texto plano a la lista de contenidos para la IA.
+                            contenido_ia.append(texto_csv)
+                    else:
+                        # Si es PDF o DOCX, usamos el método de análisis nativo como antes.
+                        contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
+                    # --- [CAMBIO 2 - FIN DE LA NUEVA LÓGICA] ---
 
                 response = model.generate_content(contenido_ia)
                 if not response.candidates:
@@ -182,15 +231,12 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 documento.save(buffer)
                 buffer.seek(0)
                 
-                # Preparamos el buffer para la subida
                 buffer.name = ANALYSIS_FILENAME
                 buffer.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 
-                # Si estamos re-generando, borramos el archivo antiguo primero
                 if st.session_state.get('analysis_doc_id'):
                     delete_file_from_drive(service, st.session_state['analysis_doc_id'])
 
-                # Subimos el nuevo archivo y actualizamos el estado de la sesión
                 new_file_id = upload_file_to_drive(service, buffer, docs_app_folder_id)
                 st.session_state.analysis_doc_id = new_file_id
                 st.toast("✅ ¡Análisis guardado en tu Drive!")
@@ -201,14 +247,11 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
 
     # --- 4. UI Condicional: Muestra botones según si el archivo existe ---
     if st.session_state.analysis_doc_id:
-        # ESTADO: El análisis YA EXISTE
         st.success("✔️ Ya existe un análisis de viabilidad guardado en tu proyecto de Drive.")
         
-        # Opción de descarga
         if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
             with st.spinner("Descargando desde Drive..."):
                 file_bytes = download_file_from_drive(service, st.session_state.analysis_doc_id)
-                # Creamos un segundo botón de descarga que aparece tras pulsar el primero
                 st.download_button(
                     label="¡Listo! Haz clic aquí para descargar",
                     data=file_bytes,
@@ -224,7 +267,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
 
     else:
-        # ESTADO: El análisis NO EXISTE
         st.info("Aún no se ha generado el documento de análisis para este proyecto.")
         st.button(
             "Analizar Pliegos y Generar Documento", 
