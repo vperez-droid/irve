@@ -85,15 +85,21 @@ def back_to_project_selection_and_cleanup():
 #           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
 # =============================================================================
 
+# En app.py
+
+# ... (Asegúrate de que estas importaciones están al principio del archivo)
+from utils import limpiar_respuesta_json, convertir_excel_a_texto_csv, convertir_docx_a_texto
+# ...
+
 def handle_full_regeneration(model):
     """
     Función que genera un índice desde cero analizando los archivos de 'Pliegos'.
-    Esta función se usa en la FASE 2 y AHORA es compatible con XLSX.
+    Esta versión está corregida para manejar XLSX, DOCX y PDF correctamente.
     """
     if not st.session_state.get('drive_service') or not st.session_state.get('selected_project'):
         st.error("Error de sesión. No se puede iniciar la regeneración."); return False
 
-    with st.spinner("Descargando archivos de 'Pliegos' y re-analizando para generar índice..."):
+    with st.spinner("Descargando archivos de 'Pliegiegos' y re-analizando para generar índice..."):
         response = None
         try:
             service = st.session_state.drive_service
@@ -108,26 +114,35 @@ def handle_full_regeneration(model):
             prompt_con_idioma = PROMPT_PLIEGOS.format(idioma=idioma_seleccionado)
             contenido_ia = [prompt_con_idioma]
 
-            # --- [CAMBIO 2 - INICIO DE LA LÓGICA MODIFICADA] ---
-            # Se itera sobre los archivos y se procesan según su tipo.
+            # --- [INICIO DE LA LÓGICA CORREGIDA Y ROBUSTA] ---
             for file in document_files:
                 file_content_bytes = download_file_from_drive(service, file['id'])
                 nombre_archivo = file['name']
                 
                 if nombre_archivo.lower().endswith('.xlsx'):
-                    # Si es un Excel, se convierte a texto CSV.
+                    # 1. Si es un Excel, se convierte a texto CSV.
                     st.write(f"⚙️ Procesando Excel para el índice: {nombre_archivo}...")
                     texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
                     if texto_csv:
                         contenido_ia.append(texto_csv)
+                
+                elif nombre_archivo.lower().endswith('.docx'):
+                    # 2. Si es un Word, se convierte a texto plano.
+                    st.write(f"⚙️ Procesando Word para el índice: {nombre_archivo}...")
+                    texto_word = convertir_docx_a_texto(file_content_bytes, nombre_archivo)
+                    if texto_word:
+                        contenido_ia.append(texto_word)
+                        
                 else:
-                    # Para PDF y DOCX, se mantiene el análisis nativo.
+                    # 3. Para todo lo demás (asumimos que es PDF), se envía de forma nativa.
+                    # Este bloque SÍ es seguro porque ya hemos filtrado los formatos no soportados.
                     contenido_ia.append({"mime_type": file['mimeType'], "data": file_content_bytes.getvalue()})
-            # --- [CAMBIO 2 - FIN DE LA LÓGICA MODIFICADA] ---
+            # --- [FIN DE LA LÓGICA CORREGIDA] ---
 
             try:
                 response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
             except Exception as api_error:
+                # Este bloque de error es el que te está saltando ahora. Con la corrección, no debería volver a pasar.
                 st.error(f"Error Crítico durante la llamada a la API de Gemini.")
                 st.info("Esto puede ocurrir por contenido en los documentos que activa un filtro de seguridad o por un formato inválido.")
                 st.write("Detalles del error de la librería:")
@@ -163,7 +178,6 @@ def handle_full_regeneration(model):
                 st.info("Respuesta recibida de la IA:")
                 st.code(response.text)
             return False
-
 # =============================================================================
 #                        LÓGICA PRINCIPAL (ROUTER)
 # =============================================================================
