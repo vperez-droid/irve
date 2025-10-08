@@ -1196,54 +1196,91 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         )
         
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
-    st.markdown("<h3>FASE 5: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
+    # TÍTULO CORREGIDO A FASE 6
+    st.markdown("<h3>FASE 6: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
     st.markdown("Este es el último paso. Se añadirá un índice y una introducción profesional al documento.")
     st.markdown("---")
+
+    # MENSAJE DE ADVERTENCIA CORREGIDO PARA APUNTAR A LA FASE 5
     if not st.session_state.get("generated_doc_buffer"):
-        st.warning("No se ha encontrado un documento de la Fase 4. Por favor, completa la fase anterior.")
-        if st.button("← Ir a Fase 4"): go_to_phase4(); st.rerun()
+        st.warning("No se ha encontrado un documento de la Fase 5. Por favor, completa la fase anterior.")
+        if st.button("← Ir a Fase 5"): 
+            go_to_phase5()
+            st.rerun()
         return
+
     if not st.session_state.get("generated_structure"):
         st.warning("No se ha encontrado la estructura del proyecto. Vuelve a la Fase 1.")
-        if st.button("← Ir a Fase 1"): go_to_phase1(); st.rerun()
+        # Este botón ya estaba bien, pero lo dejamos para consistencia.
+        if st.button("← Ir a Fase 1"): 
+            go_to_phase1() # Suponiendo que tienes una función go_to_phase1
+            st.rerun()
         return
+
     if st.button("🚀 Ensamblar Documento Final con Índice e Introducción", type="primary", use_container_width=True):
         try:
             with st.spinner("Ensamblando la versión definitiva..."):
-                buffer_fase4 = st.session_state.generated_doc_buffer
-                buffer_fase4.seek(0)
-                documento_fase4 = docx.Document(buffer_fase4)
-                texto_completo_original = "\n".join([p.text for p in documento_fase4.paragraphs if p.text.strip()])
+                buffer_fase5 = st.session_state.generated_doc_buffer
+                buffer_fase5.seek(0)
+                documento_fase5 = docx.Document(buffer_fase5)
+                
+                texto_completo_original = "\n".join([p.text for p in documento_fase5.paragraphs if p.text.strip()])
+                
                 st.toast("Generando introducción estratégica...")
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
                 prompt_intro_formateado = PROMPT_GENERAR_INTRODUCCION.format(idioma=idioma_seleccionado)
                 response_intro = model.generate_content([prompt_intro_formateado, texto_completo_original])
                 introduccion_markdown = limpiar_respuesta_final(response_intro.text)
+                
                 st.toast("Creando documento final...")
                 documento_final = docx.Document()
                 estructura_memoria = st.session_state.generated_structure.get('estructura_memoria', [])
+                
                 generar_indice_word(documento_final, estructura_memoria)
                 documento_final.add_page_break()
                 documento_final.add_heading("Introducción", level=1)
                 agregar_markdown_a_word(documento_final, corregir_numeracion_markdown(introduccion_markdown))
                 documento_final.add_page_break()
-                for element in documento_fase4.element.body:
+                
+                for element in documento_fase5.element.body:
                     documento_final.element.body.append(element)
+                    
                 doc_io_final = io.BytesIO()
                 documento_final.save(doc_io_final)
                 doc_io_final.seek(0)
+                
                 st.session_state.refined_doc_buffer = doc_io_final
                 original_filename = st.session_state.generated_doc_filename
                 st.session_state.refined_doc_filename = original_filename.replace("Cuerpo_", "Version_Final_")
-                st.success("¡Documento final ensamblado con éxito!"); st.rerun()
-        except Exception as e: st.error(f"Ocurrió un error crítico durante el ensamblaje final: {e}")
+                
+                st.success("¡Documento final ensamblado con éxito!")
+                st.rerun()
+
+        except Exception as e:
+            st.error(f"Ocurrió un error crítico durante el ensamblaje final: {e}")
+
     if st.session_state.get("refined_doc_buffer"):
-        st.balloons(); st.success("¡Tu memoria técnica definitiva está lista!")
-        st.download_button(label="🏆 Descargar Versión Definitiva (.docx)", data=st.session_state.refined_doc_buffer, file_name=st.session_state.refined_doc_filename, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+        st.balloons()
+        st.success("¡Tu memoria técnica definitiva está lista!")
+        st.download_button(
+            label="🏆 Descargar Versión Definitiva (.docx)",
+            data=st.session_state.refined_doc_buffer,
+            file_name=st.session_state.refined_doc_filename,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            use_container_width=True
+        )
+
     st.markdown("---")
+    
+    # --- SECCIÓN DE BOTONES MODIFICADA ---
     col_nav1, col_nav2 = st.columns(2)
-    with col_nav1: st.button("← Volver a Fase 5", on_click=go_to_phase4, use_container_width=True)
-    with col_nav2: st.button("↩️ Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True)
+    with col_nav1:
+        # 1. BOTÓN CORREGIDO: Ahora apunta a go_to_phase5
+        st.button("← Volver a Fase 5", on_click=go_to_phase5, use_container_width=True)
+        
+    with col_nav2:
+        # 2. BOTÓN MODIFICADO: Nuevo texto y te lleva al inicio.
+        st.button("✅ PROCESO FINALIZADO (Volver al inicio)", on_click=back_to_project_selection_and_cleanup, use_container_width=True, type="primary")
 
 
 
