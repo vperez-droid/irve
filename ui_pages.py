@@ -21,7 +21,7 @@ from drive_utils import (
 )
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
-    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
+    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, convertir_excel_a_texto_csv, 
     corregir_numeracion_markdown, generar_indice_word,
     natural_sort_key
 )
