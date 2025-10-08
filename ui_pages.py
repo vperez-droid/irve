@@ -13,17 +13,18 @@ from pypdf import PdfReader
 from prompts import (
 PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
 )
-# Importamos las funciones que necesitamos de nuestros otros módulos
 from drive_utils import (
     find_or_create_folder, get_files_in_project, delete_file_from_drive,
     upload_file_to_drive, find_file_by_name, download_file_from_drive,
     sync_guiones_folders_with_index, list_project_folders, ROOT_FOLDER_NAME
 )
+# IMPORTACIÓN CORREGIDA Y AMPLIADA
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
-    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, convertir_excel_a_texto_csv, 
+    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
     corregir_numeracion_markdown, generar_indice_word,
-    natural_sort_key
+    natural_sort_key,
+    convertir_excel_a_texto_csv # <-- ¡IMPORTANTE! Se añade la nueva función.
 )
 
 # =============================================================================
@@ -98,44 +99,6 @@ def project_selection_page(go_to_landing, go_to_phase1):
                     st.session_state.selected_project = {"name": new_project_name, "id": new_project_id}
                     st.success(f"¡Proyecto '{new_project_name}' creado! Ya puedes cargar los documentos.")
                     go_to_phase1(); st.rerun()
-
-
-
-# =============================================================================
-#           BLOQUE DE IMPORTACIONES EN ui_pages.py (al principio del archivo)
-# =============================================================================
-# (Asegúrate de que estas importaciones estén al inicio de tu archivo ui_pages.py)
-import streamlit as st
-import pandas as pd
-import json
-import openai
-from openai import OpenAI
-import google.generativeai as genai
-import io
-import re
-import os
-import time
-import docx
-from pypdf import PdfReader
-from prompts import (
-PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
-)
-from drive_utils import (
-    find_or_create_folder, get_files_in_project, delete_file_from_drive,
-    upload_file_to_drive, find_file_by_name, download_file_from_drive,
-    sync_guiones_folders_with_index, list_project_folders, ROOT_FOLDER_NAME
-)
-# IMPORTACIÓN CORREGIDA Y AMPLIADA
-from utils import (
-    mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
-    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
-    corregir_numeracion_markdown, generar_indice_word,
-    natural_sort_key,
-    convertir_excel_a_texto_csv # <-- ¡IMPORTANTE! Se añade la nueva función.
-)
-
-# ... (Aquí irían tus otras funciones de página como landing_page, project_selection_page, etc.)
-
 
 # =============================================================================
 #           FUNCIÓN phase_1_viability_page (COMPLETA Y MODIFICADA)
@@ -285,8 +248,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
 #           FASE 2: ANÁLISIS Y ESTRUCTURA (ESTA ES LA FUNCIÓN QUE FALTA)
 # =============================================================================
 
-# AHORA ACEPTA LAS FUNCIONES QUE NECESITA
-# Reemplaza tu función phase_2_structure_page en ui_pages.py con esta versión corregida
 
 def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_full_regeneration, back_to_project_selection_and_cleanup):
     if not st.session_state.get('selected_project'):
@@ -302,8 +263,8 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     
     st.selectbox(
         "Selecciona el idioma para la redacción de la memoria:",
-        ('Español', 'Inglés', 'Catalán', 'Gallego', 'Francés', 'Euskera'), # Puedes añadir o quitar idiomas
-        key='project_language' # Guardamos la elección en el estado de la sesión
+        ('Español', 'Inglés', 'Catalán', 'Gallego', 'Francés', 'Euskera'),
+        key='project_language'
     )
     pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
     document_files = get_files_in_project(service, pliegos_folder_id)
@@ -324,7 +285,8 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     with st.expander("Añadir o reemplazar documentación en la carpeta 'Pliegos'", expanded=not document_files):
         with st.container(border=True):
             st.subheader("Subir nuevos documentos")
-            new_files_uploader = st.file_uploader("Arrastra aquí los nuevos Pliegos o Plantilla", type=['docx', 'pdf'], accept_multiple_files=True, key="new_files_uploader")
+            # [CAMBIO] Se añade 'xlsx' a la lista de tipos permitidos.
+            new_files_uploader = st.file_uploader("Arrastra aquí los nuevos Pliegos o Plantilla", type=['docx', 'pdf', 'xlsx'], accept_multiple_files=True, key="new_files_uploader")
             if st.button("Guardar nuevos archivos en Drive"):
                 if new_files_uploader:
                     with st.spinner("Subiendo archivos a la carpeta 'Pliegos'..."):
@@ -351,22 +313,17 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
 
     with col2:
         if st.button("Analizar Archivos y Generar Nuevo Índice", type="primary", use_container_width=True, disabled=not document_files):
-            # Usamos la función que hemos recibido como argumento
             if handle_full_regeneration(model):
                 go_to_phase2_results(); st.rerun()
 
     st.write(""); st.markdown("---")
     
-    # --- [BLOQUE DE NAVEGACIÓN CORREGIDO] ---
-    # Creamos dos columnas para tener una navegación más limpia y clara
     col_nav1, col_nav2 = st.columns(2)
 
     with col_nav1:
-        # Este es el botón que faltaba. Llama a la función go_to_phase1.
         st.button("← Volver a Análisis de Viabilidad (F1)", on_click=go_to_phase1, use_container_width=True)
     
     with col_nav2:
-        # Mantenemos el botón para volver al inicio, pero con un texto más claro.
         st.button("↩️ Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True, key="back_to_projects")
     
 
@@ -503,8 +460,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     
 # Reemplaza tu función phase_3_page en ui_pages.py con esta versión más robusta
 
-# Reemplaza tu función phase_3_page en ui_pages.py con esta versión completa
-
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     USE_GPT_MODEL = False # PUESTO EN FALSE PARA USAR GEMINI
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
@@ -568,24 +523,40 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
             pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
             
-            # --- [CAMBIO CLAVE] ---
-            # Usamos el nuevo prompt para Gemini que genera el guion en formato Markdown
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
             prompt_con_idioma = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma_seleccionado)
             contenido_ia = [prompt_con_idioma]
             
-            # El resto del contexto se añade igual que antes
             contenido_ia.append("--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False))
             
+            # [CAMBIO 1] Lógica modificada para procesar los Pliegos, incluyendo Excel.
+            st.write("Analizando documentos de 'Pliegos'...")
             for file_info in pliegos_en_drive:
                 file_content_bytes = download_file_from_drive(service, file_info['id'])
-                contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
+                nombre_pliego = file_info['name']
+                if nombre_pliego.lower().endswith('.xlsx'):
+                    texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_pliego)
+                    if texto_csv:
+                        contenido_ia.append(texto_csv)
+                else:
+                    contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
             
             doc_extra_key = f"upload_{titulo}"
             if doc_extra_key in st.session_state and st.session_state[doc_extra_key]:
                 contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
+                st.write("Procesando documentación de apoyo adicional...")
                 for uploaded_file in st.session_state[doc_extra_key]:
-                    contenido_ia.append({"mime_type": uploaded_file.type, "data": uploaded_file.getvalue()})
+                    # [CAMBIO 2] Lógica modificada para procesar los archivos de apoyo subidos, incluyendo Excel.
+                    nombre_apoyo = uploaded_file.name
+                    if nombre_apoyo.lower().endswith('.xlsx'):
+                        bytes_io = io.BytesIO(uploaded_file.getvalue())
+                        texto_csv_apoyo = convertir_excel_a_texto_csv(bytes_io, nombre_apoyo)
+                        if texto_csv_apoyo:
+                            contenido_ia.append(texto_csv_apoyo)
+                    else:
+                        contenido_ia.append({"mime_type": uploaded_file.type, "data": uploaded_file.getvalue()})
+                    
+                    # Siempre subimos el archivo original a Drive como referencia
                     upload_file_to_drive(service, uploaded_file, subapartado_guion_folder_id)
             
             response = model.generate_content(contenido_ia)
@@ -602,6 +573,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         except Exception as e: st.error(f"Error al generar con Gemini para '{titulo}': {e}"); return False
         
     def ejecutar_generacion_con_gpt(titulo, indicaciones_completas, show_toast=True):
+        # Esta función no se ha modificado ya que está desactivada
         try: client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         except Exception: st.error("Error: 'OPENAI_API_KEY' no encontrada en secrets.toml."); return False
         nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", titulo)
@@ -683,7 +655,9 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 if estado == "⚪ No Generado": st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
                 else: st.write(f"**{subapartado_titulo}**")
                 st.caption(f"Estado: {estado}")
-                if estado == "⚪ No Generado": st.file_uploader("Aportar documentación de apoyo", type=['pdf', 'docx', 'txt'], key=f"upload_{subapartado_titulo}", accept_multiple_files=True, label_visibility="collapsed")
+                if estado == "⚪ No Generado":
+                    # [CAMBIO 3] El file_uploader ahora permite subir archivos .xlsx
+                    st.file_uploader("Aportar documentación de apoyo", type=['pdf', 'docx', 'txt', 'xlsx'], key=f"upload_{subapartado_titulo}", accept_multiple_files=True, label_visibility="collapsed")
             with col2:
                 if estado == "📄 Generado" and file_info:
                     st.link_button("Revisar en Drive", f"https://docs.google.com/document/d/{file_info['id']}/edit", use_container_width=True)
@@ -733,13 +707,10 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
 
     if not estructura: st.error("La estructura JSON no contiene la clave 'estructura_memoria'."); return
 
-    # --- [BLOQUE DE LÓGICA MEJORADO] ---
     subapartados_a_mostrar = []
-    # Comprobamos si CUALQUIER sección del índice tiene subapartados
     hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
 
     if hay_subapartados:
-        # LÓGICA ORIGINAL: Si hay subapartados, los mostramos
         for seccion in estructura:
             apartado_principal = seccion.get('apartado', 'Sin Título')
             for subapartado_titulo in seccion.get('subapartados', []):
@@ -749,18 +720,15 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 else:
                     subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
     else:
-        # LÓGICA NUEVA: Si NO hay subapartados, usamos los apartados principales
         st.info("El índice no contiene subapartados. Se mostrarán los apartados principales para la generación de prompts.")
         for seccion in estructura:
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo:
-                # Simulamos la estructura que el resto de la página espera
                 subapartados_a_mostrar.append({
                     "apartado": apartado_titulo,
-                    "subapartado": apartado_titulo, # Usamos el mismo título para la clave 'subapartado'
+                    "subapartado": apartado_titulo,
                     "indicaciones": f"Generar prompts para el apartado principal: {apartado_titulo}"
                 })
-    # --- [FIN DEL BLOQUE MEJORADO] ---
     
     if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
@@ -773,22 +741,45 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
             subapartado_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_main_folder_id)
             
+            # [CAMBIO 1] La lógica de lectura de documentos de apoyo ahora incluye Excel.
             contexto_adicional_str = ""
             files_in_subfolder = get_files_in_project(service, subapartado_folder_id)
+            st.write(f"Analizando documentos de apoyo para '{subapartado_titulo}'...")
             for file_info in files_in_subfolder:
                 file_bytes = download_file_from_drive(service, file_info['id'])
-                if file_info['name'].endswith('.docx'):
+                nombre_apoyo = file_info['name']
+
+                if nombre_apoyo.lower().endswith('.xlsx'):
+                    texto_csv = convertir_excel_a_texto_csv(file_bytes, nombre_apoyo)
+                    if texto_csv:
+                        contexto_adicional_str += f"\n--- CONTENIDO DEL EXCEL DE APOYO ({nombre_apoyo}) ---\n{texto_csv}\n"
+                elif nombre_apoyo.endswith('.docx'):
                     doc = docx.Document(io.BytesIO(file_bytes.getvalue()))
                     texto_doc = "\n".join([p.text for p in doc.paragraphs])
-                    contexto_adicional_str += f"\n--- CONTENIDO DEL GUION ({file_info['name']}) ---\n{texto_doc}\n"
-                elif file_info['name'].endswith('.pdf'):
+                    contexto_adicional_str += f"\n--- CONTENIDO DEL GUION ({nombre_apoyo}) ---\n{texto_doc}\n"
+                elif nombre_apoyo.endswith('.pdf'):
                     reader = PdfReader(io.BytesIO(file_bytes.getvalue()))
-                    texto_pdf = "".join(page.extract_text() for page in reader.pages)
-                    contexto_adicional_str += f"\n--- CONTENIDO DEL PDF DE APOYO ({file_info['name']}) ---\n{texto_pdf}\n"
+                    texto_pdf = "".join(page.extract_text() for page in reader.pages if page.extract_text())
+                    contexto_adicional_str += f"\n--- CONTENIDO DEL PDF DE APOYO ({nombre_apoyo}) ---\n{texto_pdf}\n"
             
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
             pliegos_files_info = get_files_in_project(service, pliegos_folder_id)
-            pliegos_content_for_ia = [{"mime_type": f['mimeType'], "data": download_file_from_drive(service, f['id']).getvalue()} for f in pliegos_files_info]
+
+            # [CAMBIO 2] La lógica de lectura de "Pliegos" ahora incluye Excel.
+            st.write("Analizando documentos de 'Pliegos'...")
+            pliegos_content_for_ia = []
+            for f_info in pliegos_files_info:
+                file_content_bytes = download_file_from_drive(service, f_info['id'])
+                nombre_pliego = f_info['name']
+                if nombre_pliego.lower().endswith('.xlsx'):
+                    texto_csv_pliego = convertir_excel_a_texto_csv(file_content_bytes, nombre_pliego)
+                    if texto_csv_pliego:
+                        # Para los prompts, lo añadimos como texto plano para que forme parte del contexto general
+                        pliegos_content_for_ia.append(texto_csv_pliego)
+                else:
+                    # Para PDF/DOCX usamos el método nativo
+                    pliegos_content_for_ia.append({"mime_type": f_info['mimeType'], "data": file_content_bytes.getvalue()})
+
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
             
             full_structure = st.session_state.generated_structure
