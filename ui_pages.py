@@ -262,11 +262,7 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     st.markdown(f"<h3>FASE 2: Análisis y Estructura</h3>", unsafe_allow_html=True)
     st.info(f"Estás trabajando en el proyecto: **{project_name}**")
     
-    st.selectbox(
-        "Selecciona el idioma para la redacción de la memoria:",
-        ('Español', 'Inglés', 'Catalán', 'Gallego', 'Francés', 'Euskera'),
-        key='project_language'
-    )
+
     pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
     document_files = get_files_in_project(service, pliegos_folder_id)
     
