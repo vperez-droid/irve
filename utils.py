@@ -19,6 +19,26 @@ CARACTERES_POR_PAGINA_MAX = 3800
 
 # --- NUEVA FUNCIÓN MÁS ROBUSTA ---
 
+def enviar_mensaje_con_reintentos(chat, prompt_a_enviar, reintentos=3, delay=5):
+    """
+    Envía un mensaje a un chat de Gemini, con una lógica de reintentos para errores comunes.
+    """
+    for i in range(reintentos):
+        try:
+            response = chat.send_message(prompt_a_enviar)
+            return response # Si tiene éxito, devuelve la respuesta y sale de la función
+        except google.api_core.exceptions.ResourceExhausted as e:
+            st.warning(f"⚠️ Límite de la API alcanzado. Reintentando en {delay} segundos... ({i+1}/{reintentos})")
+            time.sleep(delay)
+        except Exception as e:
+            st.error(f"Ocurrió un error inesperado al contactar la API: {e}")
+            # Para otros errores, podría ser mejor no reintentar, así que salimos.
+            return None 
+    
+    # Si el bucle termina sin éxito después de todos los reintentos
+    st.error("No se pudo obtener una respuesta de la API después de varios intentos.")
+    return None
+    
 def convertir_excel_a_texto_csv(archivo_excel_bytes, nombre_archivo):
     """
     Lee los bytes de un archivo Excel (.xlsx) y convierte todas sus hojas a una
