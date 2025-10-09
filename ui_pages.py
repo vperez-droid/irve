@@ -788,8 +788,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
 
 
-# ui_pages.py
-
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
@@ -847,29 +845,24 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         subapartado_titulo = matiz_info.get("subapartado", "N/A")
         json_limpio_str = ""
         try:
-            # --- [INICIO DEL BLOQUE DE CÓDIGO CORREGIDO] ---
-            # 1. BUSCAR LAS PÁGINAS SUGERIDAS EN EL JSON DE LA FASE 2
+            # --- [INICIO DEL BLOQUE DE CÓDIGO CORRECTO] ---
+            # 1. BUSCAR LOS CARACTERES PRE-CALCULADOS EN EL JSON DE LA FASE 2
             plan_extension = st.session_state.generated_structure.get('plan_extension', [])
-            paginas_sugeridas_numerico = 1  # Valor por defecto si no se encuentra nada
+            min_chars = 3500  # Valor por defecto
+            max_chars = 3800  # Valor por defecto
 
             for item_apartado in plan_extension:
                 if item_apartado.get('apartado') == apartado_titulo:
                     desglose = item_apartado.get('desglose_subapartados', [])
                     for item_subapartado in desglose:
                         if item_subapartado.get('subapartado') == subapartado_titulo:
-                            try:
-                                # Leemos el valor y lo convertimos a número
-                                paginas_sugeridas_numerico = int(item_subapartado.get('paginas_sugeridas', 1))
-                            except (ValueError, TypeError):
-                                paginas_sugeridas_numerico = 1 # Si falla, volvemos al valor por defecto
+                            # ¡ESTA ES LA LÍNEA CRÍTICA! ASEGÚRATE DE QUE LOS NOMBRES COINCIDEN CON TU JSON
+                            min_chars = item_subapartado.get('min_caracteres_sugeridos', min_chars)
+                            max_chars = item_subapartado.get('max_caracteres_sugeridos', max_chars)
                             break
                     break
-
-            # 2. CALCULAR LOS CARACTERES AL VUELO
-            min_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MIN
-            max_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MAX
-
-            # 3. LEER DOCUMENTOS (SIN CAMBIOS)
+            
+            # 2. LEER DOCUMENTOS (GUION)
             guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
             nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
             subapartado_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_main_folder_id)
@@ -885,16 +878,15 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                     contexto_adicional_str += f"\n--- CONTENIDO DEL GUION ({nombre_apoyo}) ---\n{texto_doc}\n"
                 # (Añade aquí el manejo de otros tipos de archivo si es necesario)
             
-            # 4. FORMATEAR EL PROMPT SIMPLIFICADO
+            # 3. FORMATEAR EL PROMPT SIMPLIFICADO Y CORRECTO
             prompt_final = PROMPT_DESARROLLO.format(
                 idioma=st.session_state.get('project_language', 'Español'),
                 apartado_referencia=apartado_titulo,
                 subapartado_referencia=subapartado_titulo,
-                # Inyectamos los valores calculados
                 min_chars=min_chars,
                 max_chars=max_chars
             )
-            # --- [FIN DEL BLOQUE DE CÓDIGO CORREGIDO] ---
+            # --- [FIN DEL BLOQUE DE CÓDIGO CORRECTO] ---
             
             contenido_ia = [prompt_final]
             if contexto_adicional_str:
@@ -924,6 +916,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             st.error(f"Error generando prompts para '{subapartado_titulo}': {e}")
             return False
 
+    # (El resto de la función: handle_individual_deletion, handle_conjunto_generation y la UI, no necesita cambios)
     def handle_individual_deletion(titulo, plan_id_to_delete):
         with st.spinner(f"Eliminando el plan para '{titulo}'..."):
             if delete_file_from_drive(service, plan_id_to_delete):
