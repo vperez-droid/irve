@@ -788,6 +788,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
 
 
+# Pega esta función completa en tu archivo ui_pages.py, reemplazando la original.
+
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
@@ -840,35 +842,44 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
     
     if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
+    # --- [INICIO DE LA FUNCIÓN CORREGIDA] ---
     def handle_individual_generation(matiz_info, callback_model, show_toast=True):
         apartado_titulo = matiz_info.get("apartado", "N/A")
         subapartado_titulo = matiz_info.get("subapartado", "N/A")
         json_limpio_str = ""
         try:
-            # --- [INICIO DEL BLOQUE DE CÓDIGO CORRECTO] ---
-            # 1. BUSCAR LOS CARACTERES PRE-CALCULADOS EN EL JSON DE LA FASE 2
+            # 1. Extraer TODA la configuración necesaria del estado de la sesión
+            config_licitacion = st.session_state.generated_structure.get('configuracion_licitacion', {})
             plan_extension = st.session_state.generated_structure.get('plan_extension', [])
-            min_chars = 3500  # Valor por defecto
-            max_chars = 3800  # Valor por defecto
+            
+            max_paginas_doc = config_licitacion.get('max_paginas', 'N/D')
+            reglas_formato_doc = config_licitacion.get('reglas_formato', 'N/D')
 
+            # Valores por defecto por si no se encuentran los datos específicos
+            min_chars_sub = 3500
+            max_chars_sub = 3800
+            paginas_sugeridas_sub = "1" 
+
+            # Búsqueda de los valores específicos para el subapartado actual
             for item_apartado in plan_extension:
                 if item_apartado.get('apartado') == apartado_titulo:
                     desglose = item_apartado.get('desglose_subapartados', [])
                     for item_subapartado in desglose:
                         if item_subapartado.get('subapartado') == subapartado_titulo:
-                            # ¡ESTA ES LA LÍNEA CRÍTICA! ASEGÚRATE DE QUE LOS NOMBRES COINCIDEN CON TU JSON
-                            min_chars = item_subapartado.get('min_caracteres_sugeridos', min_chars)
-                            max_chars = item_subapartado.get('max_caracteres_sugeridos', max_chars)
+                            min_chars_sub = item_subapartado.get('min_caracteres_sugeridos', min_chars_sub)
+                            max_chars_sub = item_subapartado.get('max_caracteres_sugeridos', max_chars_sub)
+                            paginas_sugeridas_sub = str(item_subapartado.get('paginas_sugeridas', paginas_sugeridas_sub))
                             break
                     break
             
-            # 2. LEER DOCUMENTOS (GUION)
+            # 2. Leer el documento de "Guion" correspondiente
             guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
             nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
             subapartado_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_main_folder_id)
             contexto_adicional_str = ""
             files_in_subfolder = get_files_in_project(service, subapartado_folder_id)
-            st.write(f"Analizando documentos de apoyo para '{subapartado_titulo}'...")
+            
+            st.write(f"Analizando guion y documentos de apoyo para '{subapartado_titulo}'...")
             for file_info in files_in_subfolder:
                 file_bytes = download_file_from_drive(service, file_info['id'])
                 nombre_apoyo = file_info['name']
@@ -876,22 +887,25 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                     doc = docx.Document(io.BytesIO(file_bytes.getvalue()))
                     texto_doc = "\n".join([p.text for p in doc.paragraphs])
                     contexto_adicional_str += f"\n--- CONTENIDO DEL GUION ({nombre_apoyo}) ---\n{texto_doc}\n"
-                # (Añade aquí el manejo de otros tipos de archivo si es necesario)
             
-            # 3. FORMATEAR EL PROMPT SIMPLIFICADO Y CORRECTO
+            # 3. Formatear el prompt con TODAS las claves y nombres CORRECTOS
             prompt_final = PROMPT_DESARROLLO.format(
                 idioma=st.session_state.get('project_language', 'Español'),
+                max_paginas=max_paginas_doc,
+                reglas_formato=reglas_formato_doc,
                 apartado_referencia=apartado_titulo,
                 subapartado_referencia=subapartado_titulo,
-                min_chars=min_chars,
-                max_chars=max_chars
+                paginas_sugeridas_subapartado=paginas_sugeridas_sub,
+                min_chars_total=min_chars_sub,
+                max_chars_total=max_chars_sub
             )
-            # --- [FIN DEL BLOQUE DE CÓDIGO CORRECTO] ---
             
             contenido_ia = [prompt_final]
             if contexto_adicional_str:
                 contenido_ia.append(contexto_adicional_str)
-            
+            else:
+                st.warning(f"No se encontró un archivo de Guion (.docx) para '{subapartado_titulo}'. La calidad del resultado puede ser inferior.")
+
             generation_config = {"response_mime_type": "application/json"}
             response = callback_model.generate_content(contenido_ia, generation_config=generation_config)
             json_limpio_str = limpiar_respuesta_json(response.text)
@@ -915,8 +929,8 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         except Exception as e:
             st.error(f"Error generando prompts para '{subapartado_titulo}': {e}")
             return False
+    # --- [FIN DE LA FUNCIÓN CORREGIDA] ---
 
-    # (El resto de la función: handle_individual_deletion, handle_conjunto_generation y la UI, no necesita cambios)
     def handle_individual_deletion(titulo, plan_id_to_delete):
         with st.spinner(f"Eliminando el plan para '{titulo}'..."):
             if delete_file_from_drive(service, plan_id_to_delete):
@@ -1054,6 +1068,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase3, use_container_width=True)
     with col_nav3_2:
         st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
+        
 # =============================================================================
 #           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
 # =============================================================================
