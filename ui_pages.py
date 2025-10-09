@@ -890,7 +890,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             config_licitacion = full_structure.get('configuracion_licitacion', {})
             plan_extension = full_structure.get('plan_extension', [])
 
-            # --- [INICIO DEL BLOQUE DE CÓDIGO ACTUALIZADO] ---
+            # --- [INICIO DEL BLOQUE DE CÓDIGO ACTUALIZADO Y CORREGIDO] ---
             paginas_sugeridas_subapartado = "No especificado"
             paginas_sugeridas_numerico = 0  # Valor por defecto
 
@@ -901,35 +901,36 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                         for item_subapartado in desglose:
                             if item_subapartado.get('subapartado') == subapartado_titulo:
                                 paginas_sugeridas_subapartado = item_subapartado.get('paginas_sugeridas', 'No especificado')
-                                # Intentamos convertir las páginas a un número. Si falla, se queda en 0.
                                 try:
                                     paginas_sugeridas_numerico = int(paginas_sugeridas_subapartado)
                                 except (ValueError, TypeError):
-                                    paginas_sugeridas_numerico = 1 # Si hay un error o no es un número, asumimos 1 página.
+                                    paginas_sugeridas_numerico = 1
                                 break
                         break
             
-            # Si después de buscar, no tenemos un número de páginas válido, asignamos 1 por defecto.
             if paginas_sugeridas_numerico <= 0:
                 paginas_sugeridas_numerico = 1
                 paginas_sugeridas_subapartado = "1 (por defecto)"
 
-            # Calculamos el rango de caracteres basándonos en las constantes de utils.py
-            min_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MIN
-            max_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MAX
+            # Calculamos el presupuesto TOTAL de caracteres para el subapartado completo
+            min_chars_total_budget = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MIN
+            max_chars_total_budget = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MAX
 
+            # El nuevo prompt necesita que la IA distribuya este presupuesto total.
+            # Los placeholders {min_chars_fragmento} y {max_chars_fragmento} dentro de la plantilla
+            # serán rellenados por la IA al crear los fragmentos.
             prompt_final = PROMPT_DESARROLLO.format(
                 idioma=idioma_seleccionado,
                 max_paginas=config_licitacion.get('max_paginas', 'N/D'),
                 reglas_formato=config_licitacion.get('reglas_formato', 'No especificado'),
                 apartado_referencia=apartado_titulo,
-                paginas_sugeridas_subapartado=paginas_sugeridas_subapartado, 
+                paginas_sugeridas_subapartado=paginas_sugeridas_subapartado,
                 subapartado_referencia=subapartado_titulo,
-                # Inyectamos los valores calculados en el prompt.
-                min_chars=min_chars,
-                max_chars=max_chars
+                # Le pasamos el presupuesto TOTAL.
+                min_chars_total=min_chars_total_budget,
+                max_chars_total=max_chars_total_budget
             )
-            # --- [FIN DEL BLOQUE DE CÓDIGO ACTUALIZADO] ---
+            # --- [FIN DEL BLOQUE DE CÓDIGO ACTUALIZADO Y CORREGIDO] ---
 
             contenido_ia = [prompt_final] + pliegos_content_for_ia
             if contexto_adicional_str:
