@@ -274,7 +274,7 @@ Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato rel
 Genera únicamente el objeto JSON corregido y completo. No incluyas ningún texto fuera de él.
 """
 
-# prompts.py
+# Pega esto en tu archivo prompts.py, reemplazando el PROMPT_DESARROLLO original
 
 PROMPT_DESARROLLO = """
 **SYSTEM DIRECTIVE: YOUR ENTIRE RESPONSE MUST BE A SINGLE, VALID JSON OBJECT. ALL TEXT WITHIN THE JSON MUST BE IN THIS LANGUAGE: {idioma}. YOU ARE A CONTENT ARCHITECT, NOT A CONSULTANT. YOUR JOB IS TO DECONSTRUCT, NOT TO ANALYZE OR EVALUATE.**
@@ -298,7 +298,7 @@ You are a silent content architect. You will receive a content draft ("Guion"). 
 4.  **PROMPT TEMPLATES (USE LITERALLY):** You MUST use the following templates for the `prompt_para_asistente` key.
 
     *   **TEMPLATE FOR TEXT (MARKDOWN):**
-        `"Actúa como un redactor técnico experto y silencioso. Tu única tarea es escribir el contenido solicitado en el idioma: {idioma}. REGLAS ABSOLUTAS: 1. Tu respuesta debe ser ÚNICAMENTE el texto final en formato Markdown. 2. La longitud del texto generado para ESTE FRAGMENTO específico DEBE estar entre {min_chars_fragmento} y {max_chars_fragmento} caracteres. Esto es CRÍTICO. 3. NO ofrezcas opciones ni alternativas. 4. NO expliques los cambios que haces. 5. Empieza directamente con el primer párrafo. AHORA, GENERA EL SIGUIENTE CONTENIDO: [Here you insert the DETAILED description from the 'Guion' for this specific fragment]"`
+        `"Actúa como un redactor técnico experto y silencioso. Tu única tarea es escribir el contenido solicitado en el idioma: {idioma}. REGLAS ABSOLUTAS: 1. Tu respuesta debe ser ÚNICAMENTE el texto final en formato Markdown. 2. La longitud del texto generado para ESTE FRAGMENTO específico DEBE estar entre {{min_chars_fragmento}} y {{max_chars_fragmento}} caracteres. Esto es CRÍTICO. 3. NO ofrezcas opciones ni alternativas. 4. NO expliques los cambios que haces. 5. Empieza directamente con el primer párrafo. AHORA, GENERA EL SIGUIENTE CONTENIDO: [Here you insert the DETAILED description from the 'Guion' for this specific fragment]"`
 
     *   **TEMPLATE FOR VISUAL (HTML):**
         `"Actúa como un desarrollador front-end silencioso. Tu única tarea es generar el código HTML solicitado en el idioma: {idioma}. REGLAS ABSOLUTAS: 1. Tu respuesta debe ser ÚNICAMENTE el código HTML completo, empezando con <!DOCTYPE html>. 2. NO incluyas explicaciones, comentarios de código o las etiquetas ```html. AHORA, GENERA EL SIGUIENTE ELEMENTO VISUAL: [Here you insert the description of the visual element from the 'Guion', for example: 'Un diagrama de 3 fases con los títulos X, Y, Z y sus descripciones...']"`
@@ -312,7 +312,7 @@ Your response must be a single, valid JSON object containing a list of prompts.
       "apartado_referencia": "{apartado_referencia}",
       "subapartado_referencia": "{subapartado_referencia}",
       "prompt_id": "A unique ID. Use a suffix like '_PART1_TEXT' or '_PART2_HTML_VISUAL'",
-      "prompt_para_asistente": "[Here you insert the FULL content of TEMPLATE FOR TEXT or TEMPLATE FOR VISUAL, filled with the description from the 'Guion'. You must replace {min_chars_fragmento} and {max_chars_fragmento} with the calculated character counts for this specific fragment.]"
+      "prompt_para_asistente": "[Here you insert the FULL content of TEMPLATE FOR TEXT or TEMPLATE FOR VISUAL, filled with the description from the 'Guion'. You must replace {{min_chars_fragmento}} and {{max_chars_fragmento}} with the calculated character counts for this specific fragment.]"
     }}
   ]
 }}
