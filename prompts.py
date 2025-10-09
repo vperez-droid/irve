@@ -143,14 +143,14 @@ El idioma principal para la memoria es: {idioma}.
         {{
           "subapartado": "2.1. Arquitectura Técnica",
           "paginas_sugeridas": 8,
-          "min_caracteres_sugeridos": 28000,
-          "max_caracteres_sugeridos": 30400
+          "min_caracteres_sugeridos": 15000,
+          "max_caracteres_sugeridos": 18000
         }},
         {{
           "subapartado": "2.2. Metodología de Trabajo",
           "paginas_sugeridas": 5,
-          "min_caracteres_sugeridos": 17500,
-          "max_caracteres_sugeridos": 19000
+          "min_caracteres_sugeridos": 7500,
+          "max_caracteres_sugeridos": 10500
         }}
       ]
     }}
@@ -166,7 +166,7 @@ El idioma principal para la memoria es: {idioma}.
     1.  Asigna un número total de páginas (`paginas_sugeridas_apartado`) **ponderando según la puntuación del apartado**.
     2.  Busca y añade la puntuación para ese apartado (`puntuacion_sugerida`).
     3.  Desglosa la asignación de páginas entre sus subapartados (`desglose_subapartados`).
-    4.  Para CADA subapartado, calcula y añade `min_caracteres_sugeridos` (`paginas_sugeridas` * 3500) y `max_caracteres_sugeridos` (`paginas_sugeridas` * 3800).
+    4.  Para CADA subapartado, calcula y añade `min_caracteres_sugeridos` (`paginas_sugeridas` * 2100) y `max_caracteres_sugeridos` (`paginas_sugeridas` * 2100).
 
 Ahora, analiza los documentos adjuntos y genera el objeto JSON completo, aplicando rigurosamente todas las reglas.
 """
