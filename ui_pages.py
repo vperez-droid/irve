@@ -848,7 +848,6 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
             subapartado_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_main_folder_id)
             
-            # [CAMBIO 1] La lógica de lectura de documentos de apoyo ahora incluye Excel.
             contexto_adicional_str = ""
             files_in_subfolder = get_files_in_project(service, subapartado_folder_id)
             st.write(f"Analizando documentos de apoyo para '{subapartado_titulo}'...")
@@ -872,7 +871,6 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
             pliegos_files_info = get_files_in_project(service, pliegos_folder_id)
 
-            # [CAMBIO 2] La lógica de lectura de "Pliegos" ahora incluye Excel.
             st.write("Analizando documentos de 'Pliegos'...")
             pliegos_content_for_ia = []
             for f_info in pliegos_files_info:
@@ -881,10 +879,8 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 if nombre_pliego.lower().endswith('.xlsx'):
                     texto_csv_pliego = convertir_excel_a_texto_csv(file_content_bytes, nombre_pliego)
                     if texto_csv_pliego:
-                        # Para los prompts, lo añadimos como texto plano para que forme parte del contexto general
                         pliegos_content_for_ia.append(texto_csv_pliego)
                 else:
-                    # Para PDF/DOCX usamos el método nativo
                     pliegos_content_for_ia.append({"mime_type": f_info['mimeType'], "data": file_content_bytes.getvalue()})
 
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
@@ -893,7 +889,10 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             config_licitacion = full_structure.get('configuracion_licitacion', {})
             plan_extension = full_structure.get('plan_extension', [])
 
+            # --- [INICIO DEL BLOQUE DE CÓDIGO MODIFICADO] ---
             paginas_sugeridas_subapartado = "No especificado"
+            paginas_sugeridas_numerico = 0  # Valor por defecto
+
             if plan_extension:
                 for item_apartado in plan_extension:
                     if item_apartado.get('apartado') == apartado_titulo:
@@ -901,8 +900,22 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                         for item_subapartado in desglose:
                             if item_subapartado.get('subapartado') == subapartado_titulo:
                                 paginas_sugeridas_subapartado = item_subapartado.get('paginas_sugeridas', 'No especificado')
+                                # Intentamos convertir las páginas a un número. Si falla, se queda en 0.
+                                try:
+                                    paginas_sugeridas_numerico = int(paginas_sugeridas_subapartado)
+                                except (ValueError, TypeError):
+                                    paginas_sugeridas_numerico = 1 # Si hay un error o no es un número, asumimos 1 página.
                                 break
                         break
+            
+            # Si después de buscar, no tenemos un número de páginas válido, asignamos 1 por defecto.
+            if paginas_sugeridas_numerico <= 0:
+                paginas_sugeridas_numerico = 1
+                paginas_sugeridas_subapartado = "1 (por defecto)"
+
+            # Calculamos el rango de caracteres basándonos en las constantes importadas de utils.py
+            min_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MIN
+            max_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MAX
 
             prompt_final = PROMPT_DESARROLLO.format(
                 idioma=idioma_seleccionado,
@@ -910,8 +923,12 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 reglas_formato=config_licitacion.get('reglas_formato', 'No especificado'),
                 apartado_referencia=apartado_titulo,
                 paginas_sugeridas_subapartado=paginas_sugeridas_subapartado, 
-                subapartado_referencia=subapartado_titulo
+                subapartado_referencia=subapartado_titulo,
+                # Inyectamos los valores calculados en el prompt.
+                min_chars=min_chars,
+                max_chars=max_chars
             )
+            # --- [FIN DEL BLOQUE DE CÓDIGO MODIFICADO] ---
 
             contenido_ia = [prompt_final] + pliegos_content_for_ia
             if contexto_adicional_str:
@@ -1012,119 +1029,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         with col_sel_1:
             st.checkbox("Seleccionar Todos / Ninguno", key="select_all_prompts_checkbox", on_change=toggle_all_prompt_checkboxes, disabled=not pending_keys)
         with col_sel_2:
-            selected_keys = [key for key in pending_keys if st.session_state.get(f"pcb_{key}")]
-            num_selected = len(selected_keys)
-            if st.button(f"🚀 Generar {num_selected} planes seleccionados", type="primary", use_container_width=True, disabled=(num_selected == 0)):
-                progress_bar = st.progress(0, text="Iniciando generación en lote...")
-                items_to_generate = [matiz for matiz in subapartados_a_mostrar if matiz.get('subapartado') in selected_keys]
-                generation_ok = True
-                for i, matiz_a_generar in enumerate(items_to_generate):
-                    titulo = matiz_a_generar.get('subapartado')
-                    progress_text = f"Generando plan ({i+1}/{num_selected}): {titulo}"
-                    progress_bar.progress((i + 1) / num_selected, text=progress_text)
-                    if not handle_individual_generation(matiz_a_generar, model, show_toast=False):
-                        generation_ok = False
-                        break
-                if generation_ok:
-                    progress_bar.progress(1.0, text="¡Generación en lote completada!")
-                    st.success(f"{num_selected} planes generados.")
-                    st.balloons()
-                    time.sleep(2)
-                    st.rerun()
-
-    st.markdown("---")
-    st.subheader("Gestión de Planes de Prompts")
-
-    for i, matiz in enumerate(subapartados_a_mostrar):
-        subapartado_titulo = matiz.get("subapartado")
-        if not subapartado_titulo: continue
-        
-        nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
-        guion_generado = nombre_limpio in carpetas_de_guiones
-        plan_individual_id = planes_individuales_existentes.get(nombre_limpio)
-        
-        with st.container(border=True):
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                if not plan_individual_id and guion_generado:
-                    st.checkbox(f"**{subapartado_titulo}**", key=f"pcb_{subapartado_titulo}")
-                else:
-                    st.write(f"**{subapartado_titulo}**")
-                
-                if not guion_generado:
-                    st.warning("⚠️ Guion no generado en Fase 3. No se puede crear un plan.")
-                elif plan_individual_id:
-                    st.success("✔️ Plan generado")
-                    with st.expander("Ver / Descargar Plan Individual"):
-                        json_bytes = download_file_from_drive(service, plan_individual_id).getvalue()
-                        st.json(json_bytes.decode('utf-8'))
-                        st.download_button(
-                            "Descargar JSON",
-                            data=json_bytes,
-                            file_name=f"prompts_{nombre_limpio}.json",
-                            mime="application/json",
-                            key=f"dl_{i}"
-                        )
-                else:
-                    st.info("⚪ Pendiente de generar plan de prompts")
-
-            with col2:
-                if not plan_individual_id:
-                    st.button("Generar Plan de Prompts", key=f"gen_ind_{i}", on_click=handle_individual_generation, args=(matiz, model, True), use_container_width=True, type="primary", disabled=not guion_generado)
-                else:
-                    st.button("Re-generar Plan", key=f"gen_regen_{i}", on_click=handle_individual_generation, args=(matiz, model, True), use_container_width=True, type="secondary")
-                    st.button("🗑️ Borrar Plan", key=f"del_plan_{i}", on_click=handle_individual_deletion, args=(subapartado_titulo, plan_individual_id), use_container_width=True)
-
-    st.markdown("---")
-    st.button("🚀 Unificar y Guardar Plan de Prompts Conjunto", on_click=handle_conjunto_generation, use_container_width=True, type="primary", help="Unifica todos los planes individuales generados en un único archivo maestro.")
-    col_nav3_1, col_nav3_2 = st.columns(2)
-    with col_nav3_1:
-        st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase3, use_container_width=True)
-    with col_nav3_2:
-        st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
-
-# =============================================================================
-#           FUNCIÓN DE AYUDA PARA LA GESTIÓN DE ERRORES DE API
-# =============================================================================
-
-def enviar_mensaje_con_reintentos(chat, prompt, max_reintentos=5, espera_inicial_segundos=15):
-    """
-    Envía un mensaje a un chat de Gemini, gestionando automáticamente los errores de 
-    límite de velocidad (429) con una estrategia de reintentos con espera exponencial.
-    """
-    intentos = 0
-    while intentos < max_reintentos:
-        try:
-            # Pausa preventiva para no saturar la API. Esencial en bucles rápidos.
-            time.sleep(1.5) 
-            
-            # Intenta enviar el mensaje
-            response = chat.send_message(prompt)
-            return response
-
-        except google.api_core.exceptions.ResourceExhausted as e:
-            # Error 429: Se ha excedido la cuota de tokens por minuto.
-            intentos += 1
-            # La espera se duplica en cada reintento (15s, 30s, 60s...)
-            tiempo_de_espera = espera_inicial_segundos * (2 ** (intentos - 1))
-            
-            st.warning(
-                f"Límite de velocidad de la API alcanzado. "
-                f"Pausando durante {tiempo_de_espera} segundos... (Intento {intentos}/{max_reintentos})"
-            )
-            time.sleep(tiempo_de_espera)
-
-        except Exception as e:
-            # Para cualquier otro error (filtros de seguridad, problemas de conexión, etc.),
-            # fallamos inmediatamente para no malgastar reintentos.
-            st.error(f"Error crítico en la API durante el envío: {e}")
-            return None # Devuelve None para indicar un fallo irrecuperable
-
-    # Si el bucle termina, significa que hemos superado todos los reintentos.
-    st.error(f"No se pudo completar la solicitud después de {max_reintentos} intentos. "
-             "La API sigue ocupada. Intenta de nuevo más tarde.")
-    return None
-
+            selected_keys = [key for key in pending_ifkeys = [key for key in pending_if
 # =============================================================================
 #           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
 # =============================================================================
