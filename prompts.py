@@ -90,22 +90,24 @@ Debes explicar todo como si el que fuera a leer las indicaciones no supiera nada
 }
 """
 
-# EN prompts.py
-
-# EN prompts.py
+# prompts.py
 
 PROMPT_PLIEGOS = """
-# TAREA: Analizar documentos de licitación y generar una estructura JSON.
+# TAREA: Analizar documentos de licitación y generar una estructura JSON estratégica.
 
 # CONTEXTO
 Eres un asistente experto en la preparación de memorias técnicas para licitaciones públicas.
-Tu tarea es leer y comprender los documentos adjuntos (pliegos, plantillas, etc.) y generar una estructura detallada en formato JSON.
+Tu tarea es leer y comprender los documentos adjuntos (pliegos, plantillas, etc.) y generar una estructura detallada y ESTRATÉGICA en formato JSON.
 El idioma principal para la memoria es: {idioma}.
 
 # INSTRUCCIONES ESTRICTAS DE FORMATO DE SALIDA
 1.  **OBLIGATORIO: Tu única salida debe ser un objeto JSON válido.** No incluyas ningún texto introductorio, explicaciones, ni la palabra "json" o ```json ``` al principio o al final.
-2.  **VALIDACIÓN:** Asegúrate de que todas las comas, corchetes y llaves estén correctamente colocados. El JSON debe poder ser parseado directamente sin errores.
+2.  **VALIDACIÓN:** Asegúrate de que todas las comas, corchetes y llaves estén correctamente colocados.
 3.  **ESTRUCTURA:** El JSON debe seguir la estructura exacta del siguiente ejemplo.
+
+# REGLAS ESTRATÉGICAS DE GENERACIÓN
+1.  **PONDERACIÓN POR PUNTUACIÓN (REGLA DEL CLIENTE - ¡CRÍTICA!):** Al distribuir las páginas en `plan_extension`, DEBES hacerlo de forma proporcional a la puntuación de cada apartado. **Los apartados con más puntos DEBEN tener asignadas más páginas.** Si un apartado vale 20 puntos y otro 5, el primero debe tener significativamente más páginas. Si no se especifica puntuación, distribuye el resto de páginas de forma lógica.
+2.  **CONSISTENCIA:** La suma de `paginas_sugeridas_apartado` debe ser coherente con el `max_paginas` detectado. La suma de `paginas_sugeridas` dentro de `desglose_subapartados` debe ser igual al total del apartado.
 
 # EJEMPLO DE LA ESTRUCTURA JSON REQUERIDA
 {{
@@ -122,28 +124,14 @@ El idioma principal para la memoria es: {idioma}.
         "1.1. Objeto del Proyecto",
         "1.2. Entendimiento de las Necesidades"
       ]
-    }},
-    {{
-      "apartado": "2. Solución Propuesta",
-      "subapartados": [
-        "2.1. Arquitectura Técnica",
-        "2.2. Metodología de Trabajo",
-        "2.3. Cronograma de Implantación"
-      ]
     }}
   ],
   "matices_desarrollo": [
     {{
       "apartado": "1. Introducción y Contexto",
       "subapartado": "1.1. Objeto del Proyecto",
-      "indicaciones": "Describir brevemente el objetivo principal de la licitación. Resaltar cómo nuestra empresa está alineada con este objetivo. Mencionar el punto 3.A de los pliegos.",
+      "indicaciones": "Describir brevemente el objetivo principal de la licitación.",
       "palabras_clave": ["objetivo", "alcance", "alineación estratégica"]
-    }},
-    {{
-      "apartado": "2. Solución Propuesta",
-      "subapartado": "2.2. Metodología de Trabajo",
-      "indicaciones": "Detallar la metodología ágil (Scrum/Kanban) que se utilizará. Incluir roles, ceremonias y herramientas. Hacer referencia a los criterios de valoración de la sección 5.",
-      "palabras_clave": ["agilidad", "Scrum", "gestión de proyectos", "eficiencia"]
     }}
   ],
   "plan_extension": [
@@ -154,15 +142,15 @@ El idioma principal para la memoria es: {idioma}.
       "desglose_subapartados": [
         {{
           "subapartado": "2.1. Arquitectura Técnica",
-          "paginas_sugeridas": 8
+          "paginas_sugeridas": 8,
+          "min_caracteres_sugeridos": 28000,
+          "max_caracteres_sugeridos": 30400
         }},
         {{
           "subapartado": "2.2. Metodología de Trabajo",
-          "paginas_sugeridas": 5
-        }},
-        {{
-          "subapartado": "2.3. Cronograma de Implantación",
-          "paginas_sugeridas": 2
+          "paginas_sugeridas": 5,
+          "min_caracteres_sugeridos": 17500,
+          "max_caracteres_sugeridos": 19000
         }}
       ]
     }}
@@ -171,17 +159,17 @@ El idioma principal para la memoria es: {idioma}.
 
 # ANÁLISIS A REALIZAR
 - **titulo_memoria**: Genera un título descriptivo basado en el objeto de la licitación.
-- **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato. Si no los encuentras, indica 'N/D'.
-- **estructura_memoria**: Crea un índice detallado y lógico. Basa los apartados y subapartados en los requisitos y criterios de evaluación de los documentos.
-- **matices_desarrollo**: Para cada subapartado, proporciona indicaciones claras sobre qué escribir, a qué puntos de los pliegos hacer referencia y qué palabras clave usar para mejorar la puntuación.
-- **plan_extension**: Para cada apartado principal, realiza TRES tareas:
-    1.  Asigna un número total de páginas sugeridas para todo el apartado (`paginas_sugeridas_apartado`).
-    2.  **CRÍTICO: Desglosa esa asignación entre sus subapartados (`desglose_subapartados`), asignando un número de páginas (`paginas_sugeridas`) a CADA subapartado. La suma de las páginas de los subapartados debe ser coherente con el total del apartado.**
-    3.  Busca en los criterios de valoración la puntuación para ese apartado y añádelo en 'puntuacion_sugerida'. Si no la encuentras, indica 'N/D'.
+- **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato.
+- **estructura_memoria**: Crea un índice detallado y lógico basado en los requisitos y criterios de evaluación.
+- **matices_desarrollo**: Para cada subapartado, proporciona indicaciones claras sobre qué escribir.
+- **plan_extension**: Para cada apartado principal, realiza CUATRO tareas, SIGUIENDO LAS REGLAS ESTRATÉGICAS:
+    1.  Asigna un número total de páginas (`paginas_sugeridas_apartado`) **ponderando según la puntuación del apartado**.
+    2.  Busca y añade la puntuación para ese apartado (`puntuacion_sugerida`).
+    3.  Desglosa la asignación de páginas entre sus subapartados (`desglose_subapartados`).
+    4.  Para CADA subapartado, calcula y añade `min_caracteres_sugeridos` (`paginas_sugeridas` * 3500) y `max_caracteres_sugeridos` (`paginas_sugeridas` * 3800).
 
-Ahora, analiza los documentos adjuntos y genera el objeto JSON completo.
+Ahora, analiza los documentos adjuntos y genera el objeto JSON completo, aplicando rigurosamente todas las reglas.
 """
-
 
 
 PROMPT_PREGUNTAS_TECNICAS = """
