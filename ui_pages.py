@@ -787,6 +787,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     with col_nav2: 
         st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
 
+
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
@@ -889,7 +890,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             config_licitacion = full_structure.get('configuracion_licitacion', {})
             plan_extension = full_structure.get('plan_extension', [])
 
-            # --- [INICIO DEL BLOQUE DE CÓDIGO MODIFICADO] ---
+            # --- [INICIO DEL BLOQUE DE CÓDIGO ACTUALIZADO] ---
             paginas_sugeridas_subapartado = "No especificado"
             paginas_sugeridas_numerico = 0  # Valor por defecto
 
@@ -913,7 +914,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 paginas_sugeridas_numerico = 1
                 paginas_sugeridas_subapartado = "1 (por defecto)"
 
-            # Calculamos el rango de caracteres basándonos en las constantes importadas de utils.py
+            # Calculamos el rango de caracteres basándonos en las constantes de utils.py
             min_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MIN
             max_chars = paginas_sugeridas_numerico * CARACTERES_POR_PAGINA_MAX
 
@@ -928,7 +929,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 min_chars=min_chars,
                 max_chars=max_chars
             )
-            # --- [FIN DEL BLOQUE DE CÓDIGO MODIFICADO] ---
+            # --- [FIN DEL BLOQUE DE CÓDIGO ACTUALIZADO] ---
 
             contenido_ia = [prompt_final] + pliegos_content_for_ia
             if contexto_adicional_str:
@@ -1029,7 +1030,76 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         with col_sel_1:
             st.checkbox("Seleccionar Todos / Ninguno", key="select_all_prompts_checkbox", on_change=toggle_all_prompt_checkboxes, disabled=not pending_keys)
         with col_sel_2:
-            selected_keys = [key for key in pending_ifkeys = [key for key in pending_if
+            selected_keys = [key for key in pending_keys if st.session_state.get(f"pcb_{key}")]
+            num_selected = len(selected_keys)
+            if st.button(f"🚀 Generar {num_selected} planes seleccionados", type="primary", use_container_width=True, disabled=(num_selected == 0)):
+                progress_bar = st.progress(0, text="Iniciando generación en lote...")
+                items_to_generate = [matiz for matiz in subapartados_a_mostrar if matiz.get('subapartado') in selected_keys]
+                generation_ok = True
+                for i, matiz_a_generar in enumerate(items_to_generate):
+                    titulo = matiz_a_generar.get('subapartado')
+                    progress_text = f"Generando plan ({i+1}/{num_selected}): {titulo}"
+                    progress_bar.progress((i + 1) / num_selected, text=progress_text)
+                    if not handle_individual_generation(matiz_a_generar, model, show_toast=False):
+                        generation_ok = False
+                        break
+                if generation_ok:
+                    progress_bar.progress(1.0, text="¡Generación en lote completada!")
+                    st.success(f"{num_selected} planes generados.")
+                    st.balloons()
+                    time.sleep(2)
+                    st.rerun()
+
+    st.markdown("---")
+    st.subheader("Gestión de Planes de Prompts")
+
+    for i, matiz in enumerate(subapartados_a_mostrar):
+        subapartado_titulo = matiz.get("subapartado")
+        if not subapartado_titulo: continue
+        
+        nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
+        guion_generado = nombre_limpio in carpetas_de_guiones
+        plan_individual_id = planes_individuales_existentes.get(nombre_limpio)
+        
+        with st.container(border=True):
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                if not plan_individual_id and guion_generado:
+                    st.checkbox(f"**{subapartado_titulo}**", key=f"pcb_{subapartado_titulo}")
+                else:
+                    st.write(f"**{subapartado_titulo}**")
+                
+                if not guion_generado:
+                    st.warning("⚠️ Guion no generado en Fase 3. No se puede crear un plan.")
+                elif plan_individual_id:
+                    st.success("✔️ Plan generado")
+                    with st.expander("Ver / Descargar Plan Individual"):
+                        json_bytes = download_file_from_drive(service, plan_individual_id).getvalue()
+                        st.json(json_bytes.decode('utf-8'))
+                        st.download_button(
+                            "Descargar JSON",
+                            data=json_bytes,
+                            file_name=f"prompts_{nombre_limpio}.json",
+                            mime="application/json",
+                            key=f"dl_{i}"
+                        )
+                else:
+                    st.info("⚪ Pendiente de generar plan de prompts")
+
+            with col2:
+                if not plan_individual_id:
+                    st.button("Generar Plan de Prompts", key=f"gen_ind_{i}", on_click=handle_individual_generation, args=(matiz, model, True), use_container_width=True, type="primary", disabled=not guion_generado)
+                else:
+                    st.button("Re-generar Plan", key=f"gen_regen_{i}", on_click=handle_individual_generation, args=(matiz, model, True), use_container_width=True, type="secondary")
+                    st.button("🗑️ Borrar Plan", key=f"del_plan_{i}", on_click=handle_individual_deletion, args=(subapartado_titulo, plan_individual_id), use_container_width=True)
+
+    st.markdown("---")
+    st.button("🚀 Unificar y Guardar Plan de Prompts Conjunto", on_click=handle_conjunto_generation, use_container_width=True, type="primary", help="Unifica todos los planes individuales generados en un único archivo maestro.")
+    col_nav3_1, col_nav3_2 = st.columns(2)
+    with col_nav3_1:
+        st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase3, use_container_width=True)
+    with col_nav3_2:
+        st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
 # =============================================================================
 #           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
 # =============================================================================
