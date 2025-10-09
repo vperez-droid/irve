@@ -1079,7 +1079,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         plan_de_accion = json.loads(json_bytes.decode('utf-8'))
         lista_de_prompts = plan_de_accion.get("plan_de_prompts", [])
         if lista_de_prompts:
-            lista_de_prompts.sort(key=lambda x: natural_sort_key(x.get('prompt_id', '')))
+            lista_de_prompts.sort(key=lambda x: natural_sort_key(x.get('subapartado_referencia', '')))
         st.success(f"✔️ Plan de acción cargado. Se ejecutarán {len(lista_de_prompts)} prompts.")
     except Exception as e:
         st.error(f"Error al cargar o procesar el plan de acción: {e}")
