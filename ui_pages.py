@@ -12,7 +12,7 @@ import time
 import docx
 from pypdf import PdfReader
 from prompts import (
-PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
+PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_CONSULTOR_REVISION, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
 )
 from drive_utils import (
     find_or_create_folder, get_files_in_project, delete_file_from_drive,
@@ -495,8 +495,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 except Exception as e:
                     st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
                     
-# Reemplaza tu función phase_3_page en ui_pages.py con esta versión más robusta
-
 # Reemplaza tu función phase_3_page en ui_pages.py con esta versión corregida y funcional
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
@@ -613,7 +611,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             return True
         except Exception as e: st.error(f"Error al generar con Gemini para '{titulo}': {e}"); return False
 
-    # --- [NUEVO] LÓGICA COMPLETA PARA RE-GENERAR CON FEEDBACK ---
+    # --- LÓGICA COMPLETA PARA RE-GENERAR CON FEEDBACK (MANUAL) ---
     def handle_confirm_regeneration(model, titulo, file_id_borrador, feedback):
         if not feedback.strip():
             st.warning("Por favor, introduce tu feedback para la re-generación.")
@@ -624,6 +622,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 service = st.session_state.drive_service
                 project_folder_id = st.session_state.selected_project['id']
 
+                # Descarga el borrador original para tenerlo de contexto
                 borrador_bytes = download_file_from_drive(service, file_id_borrador)
                 doc = docx.Document(io.BytesIO(borrador_bytes.getvalue()))
                 borrador_original_texto = "\n".join([p.text for p in doc.paragraphs])
@@ -634,9 +633,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
                 prompt_con_idioma = PROMPT_CONSULTOR_REVISION.format(idioma=idioma_seleccionado)
                 
+                # Construye el prompt con las tres partes
                 contenido_ia = [prompt_con_idioma]
                 contenido_ia.append("--- BORRADOR ORIGINAL ---\n" + borrador_original_texto)
-                contenido_ia.append("--- FEEDBACK DEL CLIENTE ---\n" + feedback)
+                contenido_ia.append("--- FEEDBACK DEL CLIENTE ---\n" + feedback) # El feedback viene del text_area
                 
                 st.write("Analizando Pliegos para dar contexto...")
                 for file_info in pliegos_en_drive:
@@ -648,6 +648,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     st.error("La IA no generó una respuesta para la re-generación.")
                     return
 
+                # Crea y guarda el nuevo documento, reemplazando el antiguo
                 documento_nuevo = docx.Document()
                 agregar_markdown_a_word(documento_nuevo, response.text)
                 doc_io = io.BytesIO()
@@ -662,18 +663,18 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
                 subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
                 
-                delete_file_from_drive(service, file_id_borrador)
-                upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
+                delete_file_from_drive(service, file_id_borrador) # Borra el viejo
+                upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id) # Sube el nuevo
                 
                 st.toast(f"¡Guion para '{titulo}' re-generado con éxito!")
-                st.session_state.regenerating_item = None
+                st.session_state.regenerating_item = None # Resetea la UI
                 st.rerun()
 
             except Exception as e:
                 st.error(f"Error crítico durante la re-generación: {e}")
                 st.session_state.regenerating_item = None
 
-    # --- [CORREGIDO] ESTAS FUNCIONES AHORA TIENEN LÓGICA REAL ---
+    # --- FUNCIONES DE CONTROL DE UI ---
     def ejecutar_regeneracion(titulo):
         st.session_state.regenerating_item = titulo
         st.rerun()
@@ -732,10 +733,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         else: estado = "⚪ No Generado"; file_info, subapartado_folder_id = None, None
         
         with st.container(border=True):
-            # --- [NUEVO] UI CONDICIONAL PARA RE-GENERAR ---
+            # --- UI CONDICIONAL PARA MOSTRAR FEEDBACK O VISTA NORMAL ---
             if st.session_state.regenerating_item == subapartado_titulo:
                 st.subheader(f"Re-generar: {subapartado_titulo}")
-                st.info("Revisa el borrador en Drive, luego escribe tus indicaciones de mejora, correcciones o cambios de enfoque en el cuadro de abajo.")
+                st.info("Revisa el borrador en Drive, luego escribe o pega tus indicaciones de mejora en el cuadro de abajo.")
                 
                 feedback = st.text_area(
                     "Feedback para la IA:", 
@@ -758,7 +759,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     st.button("❌ Cancelar", key=f"cancel_regen_{i}", on_click=lambda: setattr(st.session_state, 'regenerating_item', None), use_container_width=True)
             
             else:
-                # --- VISTA NORMAL (LIGERAMENTE MODIFICADA) ---
+                # --- VISTA NORMAL ---
                 col1, col2 = st.columns([2, 1])
                 with col1:
                     if estado == "⚪ No Generado": st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
