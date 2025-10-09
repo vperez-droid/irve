@@ -14,6 +14,9 @@ import pandas as pd
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
 # =============================================================================
 
+CARACTERES_POR_PAGINA_MIN = 3500
+CARACTERES_POR_PAGINA_MAX = 3800
+
 # --- NUEVA FUNCIÓN MÁS ROBUSTA ---
 
 def convertir_excel_a_texto_csv(archivo_excel_bytes, nombre_archivo):
