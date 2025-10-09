@@ -1111,17 +1111,39 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         
         try:
             with st.spinner("Iniciando redacción... Esto puede tardar varios minutos."):
+                
+                # --- [INICIO DE LA NUEVA LÓGICA DE CÁLCULO] ---
+                # 1. Contar cuántos fragmentos (prompts) tiene cada subapartado
+                fragment_counts = {}
+                for tarea in lista_de_prompts:
+                    sub_ref = tarea.get("subapartado_referencia")
+                    if sub_ref:
+                        fragment_counts[sub_ref] = fragment_counts.get(sub_ref, 0) + 1
+                
+                # 2. Crear un diccionario con los presupuestos de caracteres de cada subapartado
+                character_budgets = {}
+                plan_extension = st.session_state.generated_structure.get('plan_extension', [])
+                for item_apartado in plan_extension:
+                    for item_subapartado in item_apartado.get('desglose_subapartados', []):
+                        sub_ref = item_subapartado.get('subapartado')
+                        if sub_ref:
+                            character_budgets[sub_ref] = (
+                                item_subapartado.get('min_caracteres_sugeridos', 3500),
+                                item_subapartado.get('max_caracteres_sugeridos', 3800)
+                            )
+                # --- [FIN DE LA NUEVA LÓGICA DE CÁLCULO] ---
+
                 chat_redaccion = model.start_chat()
                 progress_bar = st.progress(0, text="Configurando sesión de chat...")
                 ultimo_apartado_escrito = None
                 ultimo_subapartado_escrito = None
 
                 for i, tarea in enumerate(lista_de_prompts):
-                    progress_text = f"Procesando Tarea {i+1}/{len(lista_de_prompts)}: {tarea.get('subapartado_referencia', 'N/A')}"
+                    subapartado_actual = tarea.get("subapartado_referencia")
+                    progress_text = f"Procesando Tarea {i+1}/{len(lista_de_prompts)}: {subapartado_actual or 'N/A'}"
                     progress_bar.progress((i + 1) / len(lista_de_prompts), text=progress_text)
                     
                     apartado_actual = tarea.get("apartado_referencia")
-                    subapartado_actual = tarea.get("subapartado_referencia")
 
                     if apartado_actual and apartado_actual != ultimo_apartado_escrito:
                         if ultimo_apartado_escrito is not None:
@@ -1138,16 +1160,30 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                     prompt_actual = tarea.get("prompt_para_asistente")
                     
                     if prompt_actual:
-                        # --- [CAMBIO CLAVE] Se usa la nueva función con reintentos ---
-                        response = enviar_mensaje_con_reintentos(chat_redaccion, prompt_actual)
+                        prompt_a_enviar = prompt_actual
+                        # --- [INICIO DE LA LÓGICA DE FORMATEO] ---
+                        # 3. Calcular y formatear el prompt si es necesario
+                        if subapartado_actual and '{min_chars_fragmento}' in prompt_actual:
+                            num_fragments = fragment_counts.get(subapartado_actual, 1)
+                            min_total, max_total = character_budgets.get(subapartado_actual, (3500, 3800))
+                            
+                            min_per_fragment = min_total / num_fragments
+                            max_per_fragment = max_total / num_fragments
+
+                            prompt_a_enviar = prompt_actual.format(
+                                min_chars_fragmento=int(min_per_fragment),
+                                max_chars_fragmento=int(max_per_fragment)
+                            )
+                        # --- [FIN DE LA LÓGICA DE FORMATEO] ---
+
+                        response = enviar_mensaje_con_reintentos(chat_redaccion, prompt_a_enviar)
                         
                         if not response:
                             st.error("La generación se ha detenido debido a un error persistente en la API.")
                             generation_successful = False
-                            break # Detiene el bucle for
+                            break
                         
                         respuesta_ia_bruta = response.text
-                        # -----------------------------------------------------------
 
                     es_html = ("HTML" in tarea.get("prompt_id", "").upper() or "VISUAL" in tarea.get("prompt_id", "").upper() or respuesta_ia_bruta.strip().startswith(('<!DOCTYPE html>', '<div', '<table')))
                     
@@ -1160,12 +1196,11 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                         else:
                             documento.add_paragraph("[ERROR AL GENERAR IMAGEN DESDE HTML]")
                     else:
-
                         texto_limpio = limpiar_respuesta_final(respuesta_ia_bruta)
                         texto_corregido = corregir_numeracion_markdown(texto_limpio)
                         if texto_corregido:
                             agregar_markdown_a_word(documento, texto_corregido)
-                else: # Este 'else' se ejecuta solo si el bucle 'for' termina sin un 'break'
+                else:
                     generation_successful = True
 
         except Exception as e:
