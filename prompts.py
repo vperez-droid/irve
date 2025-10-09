@@ -276,34 +276,32 @@ Genera únicamente el objeto JSON corregido y completo. No incluyas ningún text
 
 # prompts.py
 
-# prompts.py
-
 PROMPT_DESARROLLO = """
 **SYSTEM DIRECTIVE: YOUR ENTIRE RESPONSE MUST BE A SINGLE, VALID JSON OBJECT. ALL TEXT WITHIN THE JSON MUST BE IN THIS LANGUAGE: {idioma}. YOU ARE A CONTENT ARCHITECT, NOT A CONSULTANT. YOUR JOB IS TO DECONSTRUCT, NOT TO ANALYZE OR EVALUATE.**
 
 **STRATEGIC CONTEXT & CONSTRAINTS (ABSOLUTE RULES):**
 - **Overall Document Limit:** {max_paginas} pages.
 - **General Formatting Rules:** {reglas_formato}.
-- **CRITICAL - Total Suggested Length for THIS ENTIRE SUBSECTION ('{subapartado_referencia}'):** {paginas_sugeridas_subapartado} pages.
-- **Total Character Budget for this Subsection:** From {min_chars_total} to {max_chars_total} characters.
+- **CRITICAL - Suggested Length for THIS SPECIFIC SUBSECTION ('{subapartado_referencia}'):** {paginas_sugeridas_subapartado} pages.
+- **CRITICAL - Total Character Budget for this Subsection: From {min_chars_total} to {max_chars_total} characters.**
+- **Your Mission:** Deconstruct the 'Guion' for the subsection '{subapartado_referencia}' into a series of executable prompts. You MUST intelligently distribute the total character budget among these smaller prompts. If the topic is long, you MUST break it down into multiple, smaller text prompts to control the output length.
 
 **TASK:**
-You are a silent content architect. You will receive a content draft ("Guion"). Your ONLY task is to break down this draft into a structured JSON plan containing MULTIPLE SMALLER PROMPTS. This plan will be executed by another AI to write the final text.
+You are a silent content architect. You will receive a content draft ("Guion"). Your ONLY task is to break down this draft into a structured JSON plan. This plan will be executed by another AI to write the final text.
 
 **CRITICAL RULES:**
-1.  **MASTER RULE - DECONSTRUCTION & DISTRIBUTION:** Your primary job is to deconstruct the "Guion" into several logical, smaller prompts. You MUST intelligently distribute the total character budget ({min_chars_total} to {max_chars_total}) among these smaller prompts. It is NOT acceptable to create a single large prompt. For example, if the total budget is 15,000 characters, you might create three prompts of around 5,000 characters each. YOU decide the best way to split the content and the character budget for each part.
-2.  **CRITICAL EXCLUSION WARNING:** It is strictly forbidden to mention, imply, or include any data related to economic or formula-based criteria (price, economic offers, discounts, etc.). Focus solely on developing the requested technical and quality aspects.
-3.  **NO ANALYSIS:** Do not evaluate the quality of the "Guion". Do not suggest improvements. Simply convert its structure and content into a JSON plan.
-4.  **DECISION LOGIC (TEXT vs. VISUAL):**
+1.  **CRITICAL EXCLUSION WARNING:** It is strictly forbidden to mention, imply, or include any data related to economic or formula-based criteria (price, economic offers, discounts, delivery time reductions, warranty extensions, etc.). The technical proposal must only contain information related to value judgments. Focus solely on developing the requested technical and quality aspects.
+2.  **NO ANALYSIS:** Do not evaluate the quality of the "Guion". Do not suggest improvements. Simply convert its structure and content into a JSON plan based on the strategic constraints provided above.
+3.  **DECISION LOGIC (TEXT vs. VISUAL):**
     *   Identify parts of the "Guion" that are descriptive, narrative, or explanatory. These become **"texto"** type prompts.
-    *   Identify parts that describe tables, flowcharts, or diagrams. These become **"visual"** type prompts.
-5.  **PROMPT TEMPLATES (USE LITERALLY):** YOU MUST use the following templates for the `prompt_para_asistente` key.
+    *   Identify parts that describe tables, flowcharts, diagrams, or structured feature lists. These become **"visual"** type prompts.
+4.  **PROMPT TEMPLATES (USE LITERALLY):** You MUST use the following templates for the `prompt_para_asistente` key.
 
     *   **TEMPLATE FOR TEXT (MARKDOWN):**
-        `"Actúa como un redactor técnico experto y silencioso. Tu única tarea es escribir el contenido solicitado en el idioma: {idioma}. REGLAS ABSOLUTAS: 1. Tu respuesta debe ser ÚNICAMENTE el texto final en formato Markdown. 2. La longitud del texto generado para ESTE FRAGMENTO ESPECÍFICO DEBE estar entre {min_chars_fragmento} y {max_chars_fragmento} caracteres. Esto es CRÍTICO. 3. NO ofrezcas opciones ni alternativas. 4. NO expliques los cambios que haces. 5. Empieza directamente con el primer párrafo. AHORA, GENERA EL SIGUIENTE CONTENIDO: [Here you insert the DETAILED description from the 'Guion' for this specific fragment]"`
+        `"Actúa como un redactor técnico experto y silencioso. Tu única tarea es escribir el contenido solicitado en el idioma: {idioma}. REGLAS ABSOLUTAS: 1. Tu respuesta debe ser ÚNICAMENTE el texto final en formato Markdown. 2. La longitud del texto generado para ESTE FRAGMENTO específico DEBE estar entre {min_chars_fragmento} y {max_chars_fragmento} caracteres. Esto es CRÍTICO. 3. NO ofrezcas opciones ni alternativas. 4. NO expliques los cambios que haces. 5. Empieza directamente con el primer párrafo. AHORA, GENERA EL SIGUIENTE CONTENIDO: [Here you insert the DETAILED description from the 'Guion' for this specific fragment]"`
 
     *   **TEMPLATE FOR VISUAL (HTML):**
-        `"Actúa como un desarrollador front-end silencioso. Tu única tarea es generar el código HTML solicitado en el idioma: {idioma}. REGLAS ABSOLUTAS: 1. Tu respuesta debe ser ÚNICAMENTE el código HTML completo, empezando con <!DOCTYPE html>. 2. NO incluyas explicaciones. AHORA, GENERA EL SIGUIENTE ELEMENTO VISUAL: [Here you insert the description of the visual element from the 'Guion']"`
+        `"Actúa como un desarrollador front-end silencioso. Tu única tarea es generar el código HTML solicitado en el idioma: {idioma}. REGLAS ABSOLUTAS: 1. Tu respuesta debe ser ÚNICAMENTE el código HTML completo, empezando con <!DOCTYPE html>. 2. NO incluyas explicaciones, comentarios de código o las etiquetas ```html. AHORA, GENERA EL SIGUIENTE ELEMENTO VISUAL: [Here you insert the description of the visual element from the 'Guion', for example: 'Un diagrama de 3 fases con los títulos X, Y, Z y sus descripciones...']"`
 
 **FINAL JSON OUTPUT STRUCTURE (STRICT):**
 Your response must be a single, valid JSON object containing a list of prompts.
@@ -314,7 +312,7 @@ Your response must be a single, valid JSON object containing a list of prompts.
       "apartado_referencia": "{apartado_referencia}",
       "subapartado_referencia": "{subapartado_referencia}",
       "prompt_id": "A unique ID. Use a suffix like '_PART1_TEXT' or '_PART2_HTML_VISUAL'",
-      "prompt_para_asistente": "[Here you insert the FULL content of the TEMPLATE FOR TEXT or TEMPLATE FOR VISUAL, filled with the description from the 'Guion']"
+      "prompt_para_asistente": "[Here you insert the FULL content of TEMPLATE FOR TEXT or TEMPLATE FOR VISUAL, filled with the description from the 'Guion'. You must replace {min_chars_fragmento} and {max_chars_fragmento} with the calculated character counts for this specific fragment.]"
     }}
   ]
 }}
