@@ -20,7 +20,7 @@ CARACTERES_POR_PAGINA_MAX = 3800
 
 # --- NUEVA FUNCIÓN MÁS ROBUSTA ---
 
-def enviar_mensaje_con_reintentos(chat, prompt_a_enviar, reintentos=3, delay=5):
+def enviar_mensaje_con_reintentos(chat, prompt_a_enviar, reintentos=5, delay=60):
     """
     Envía un mensaje a un chat de Gemini, con una lógica de reintentos para errores comunes.
     """
