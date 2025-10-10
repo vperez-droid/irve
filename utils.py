@@ -9,7 +9,8 @@ import docx
 import imgkit
 from pypdf import PdfReader
 import pandas as pd
-
+import time # <--- Falta importar 'time' para time.sleep(delay)
+import google.api_core.exceptions # <--- Falta importar el módulo para manejar la excepción
 # =============================================================================
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
 # =============================================================================
