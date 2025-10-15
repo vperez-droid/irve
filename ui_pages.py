@@ -497,6 +497,8 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     
 # Reemplaza tu función phase_3_page en ui_pages.py con esta versión corregida y funcional
 
+# pégalo en tu archivo ui_pages.py, reemplazando la función phase_3_page original
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     USE_GPT_MODEL = False # PUESTO EN FALSE PARA USAR GEMINI
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
@@ -766,7 +768,14 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     else: st.write(f"**{subapartado_titulo}**")
                     st.caption(f"Estado: {estado}")
                     if estado == "⚪ No Generado":
-                        st.file_uploader("Aportar documentación de apoyo", type=['pdf', 'docx', 'txt', 'xlsx'], key=f"upload_{subapartado_titulo}", accept_multiple_files=True, label_visibility="collapsed")
+                        # [CAMBIO] Se añaden los tipos de archivo de imagen a la lista de formatos permitidos.
+                        st.file_uploader(
+                            "Aportar documentación de apoyo (PDF, DOCX, XLSX, PNG, JPG...)", 
+                            type=['pdf', 'docx', 'txt', 'xlsx', 'png', 'jpg', 'jpeg'], 
+                            key=f"upload_{subapartado_titulo}", 
+                            accept_multiple_files=True, 
+                            label_visibility="collapsed"
+                        )
                 with col2:
                     if estado == "📄 Generado" and file_info:
                         st.link_button("Revisar en Drive", f"https://docs.google.com/document/d/{file_info['id']}/edit", use_container_width=True)
@@ -786,9 +795,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
     with col_nav2: 
         st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
-
-
-# Pega esta función completa en tu archivo ui_pages.py, reemplazando la original.
 
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
