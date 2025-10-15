@@ -558,9 +558,9 @@ Tu misión principal es crear texto en Markdown. SIN EMBARGO, cuando identifique
 1.  **TONO DE PROPUESTA:** Usa siempre un lenguaje que demuestre capacidad y compromiso. Habla de "nuestra solución", "la UTE implementará", "nos comprometemos a", etc.
 2.  **ENFÓCATE EN EL "CÓMO":** No digas solo "cumpliremos". Explica brevemente CÓMO lo haremos (con qué tecnología, con qué metodología, con qué personal).
 3.  **ESTRUCTURA Y LIMPIEZA:** Genera únicamente el texto en Markdown (o el bloque HTML cuando corresponda), bien ordenado y siguiendo la numeración del índice original. No incluyas introducciones ni conclusiones que no formen parte del contenido de la propuesta.
-
+**4. (NUEVA REGLA) ESTILO DE CAPITALIZACIÓN: Escribe todo el guion usando 'Sentence case' (solo la primera letra de la oración y los nombres propios en mayúscula). Evita capitalizar cada palabra en listas o al describir conceptos clave (ej: escribe "orientación al cliente" en lugar de "Orientación al Cliente").**
 **[ACCIÓN]**
-Ahora, analiza los documentos y genera el borrador del guion estratégico, aplicando TODAS las reglas, incluida la nueva regla de las tablas HTML.
+Ahora, analiza los documentos y genera el borrador del guion estratégico, aplicando TODAS las reglas
 """
 
 
