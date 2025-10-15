@@ -492,28 +492,76 @@ Te proporcionaré el contexto de la licitación, que incluye los Criterios de Va
 
 Para cada punto y subpunto de los criterios, **NO lo repitas**. En su lugar, escribe uno o varios párrafos que describan **NUESTRA PROPUESTA o ENFOQUE** para ese punto. Demuestra proactividad, ofrece soluciones concretas y muestra alineación con los objetivos del cliente.
 
-**[EJEMPLO DE EJECUCIÓN PERFECTA]**
----
-**CRITERIO RECIBIDO:**
-- Stock mínimo de repuestos justificado, disponible e inmediato para equipos críticos.
+**[REGLA DE ORO ADICIONAL: INCLUSIÓN DE TABLAS COMPARATIVAS HTML]**
+Tu misión principal es crear texto en Markdown. SIN EMBARGO, cuando identifiques un **requisito mínimo claramente cuantificable en el pliego** y tu propuesta ofrezca una **mejora directa y también cuantificable**, DEBES generar una **TABLA COMPARATIVA EN FORMATO HTML** para resaltar visualmente el valor añadido.
 
-**RESPUESTA ERRÓNEA (Lo que NO debes hacer):**
-"Se requiere un stock mínimo de repuestos para los equipos críticos, que debe estar justificado y disponible." (Esto es solo repetir el requisito).
+**Lógica de decisión para insertar la tabla:**
+1.  **Detectar Mínimo:** El pliego especifica algo concreto (ej: "equipo de 2 personas", "plazo de 8 horas", "10 cursos de formación").
+2.  **Detectar Mejora:** Tu propuesta ofrece algo superior (ej: "equipo de 3 personas", "plazo de 4 horas", "15 cursos y 2 talleres").
+3.  **Acción:** Inserta el siguiente bloque de código HTML, rellenando los datos. NO incluyas las etiquetas ```html.
 
-**RESPUESTA CORRECTA (Lo que SÍ debes hacer):**
-"Nuestra propuesta garantiza la disponibilidad inmediata de repuestos para todos los equipos identificados como críticos. Para ello, implementaremos un sistema de gestión de inventario en tiempo real a través de nuestro GMAO Abismo-net, que generará alertas automáticas de reposición. Además, se firmarán acuerdos con proveedores clave como SULZER y ALBOSA para asegurar la entrega urgente de componentes específicos en un plazo inferior a 24 horas, minimizando cualquier posible tiempo de inactividad del servicio." (Esto es proponer una solución concreta).
----
+**PLANTILLA HTML OBLIGATORIA (Copia y pega rellenando los `...`):**
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabla Comparativa de Mejoras</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@400;600;700&display=swap');
+        body { font-family: 'Urbanist', sans-serif; background-color: #ffffff; margin: 0; padding: 0; }
+        .card { background-color: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 25px; max-width: 750px; border-top: 5px solid #0046C6; margin: 20px; }
+        h2 { color: #0046C6; text-align: center; margin-top: 0; font-size: 20px; font-weight: 700; margin-bottom: 20px; }
+        table { width: 100%; border-collapse: collapse; font-size: 15px; }
+        th, td { padding: 12px 15px; border: 1px solid #ddd; text-align: left; }
+        th { background-color: #f5f5f5; font-weight: 600; color: #333; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        td:nth-child(2) { font-weight: bold; color: #0046C6; }
+        td:nth-child(3) { color: #32CFAA; font-weight: bold;}
+    </style>
+</head>
+<body>
+<div class="card">
+    <h2>CUADRO RESUMEN DE MEJORA PROPUESTA</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Requisito Mínimo del Pliego</th>
+                <th>Propuesta de Mejora</th>
+                <th>Diferencia / Ventaja</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>... (Ej: Plazo de respuesta de 8 horas) ...</td>
+                <td>... (Ej: Plazo de respuesta de 4 horas) ...</td>
+                <td>... (Ej: Reducción del 50% en tiempo) ...</td>
+            </tr>
+            <!-- Puedes añadir más filas <tr>...</tr> si hay varias mejoras en el mismo apartado -->
+        </tbody>
+    </table>
+</div>
+</body>
+</html>
 
-**REGLAS DE ORO:**
+**Ejemplo de ejecución:**
+-   **CRITERIO RECIBIDO:** "Se valorará la reducción del plazo de respuesta ante incidencias críticas, siendo el mínimo exigido de 8 horas."
+-   **TU ACCIÓN:**
+    Escribes un párrafo en Markdown explicando la metodología de gestión de incidencias.
+    Luego, insertas la tabla HTML rellenada:
+    (Párrafo en Markdown sobre cómo gestionaremos las incidencias...)
+    <!DOCTYPE html>... (el código de la tabla rellenado con los datos de 8h vs 4h) ...</html>
+    (Continúas con más texto en Markdown si es necesario).
+
+**IMPORTANTE:** Para el resto del contenido que NO cumpla estas condiciones, sigue generando texto en **formato Markdown** como se te indicó originalmente.
+
+**REGLAS DE ORO (EXISTENTES):**
 1.  **TONO DE PROPUESTA:** Usa siempre un lenguaje que demuestre capacidad y compromiso. Habla de "nuestra solución", "la UTE implementará", "nos comprometemos a", etc.
 2.  **ENFÓCATE EN EL "CÓMO":** No digas solo "cumpliremos". Explica brevemente CÓMO lo haremos (con qué tecnología, con qué metodología, con qué personal).
-3.  **ESTRUCTURA Y LIMPIEZA:** Genera únicamente el texto en Markdown, bien ordenado y siguiendo la numeración del índice original. No incluyas introducciones ni conclusiones que no formen parte del contenido de la propuesta.
+3.  **ESTRUCTURA Y LIMPIEZA:** Genera únicamente el texto en Markdown (o el bloque HTML cuando corresponda), bien ordenado y siguiendo la numeración del índice original. No incluyas introducciones ni conclusiones que no formen parte del contenido de la propuesta.
 
 **[ACCIÓN]**
-Ahora, analiza los documentos y genera el borrador del guion estratégico.
+Ahora, analiza los documentos y genera el borrador del guion estratégico, aplicando TODAS las reglas, incluida la nueva regla de las tablas HTML.
 """
-
-
 
 
 
