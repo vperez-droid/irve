@@ -1077,9 +1077,18 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
     # --- 1. Inicialización y Verificación de Sesión ---
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
-    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
 
-    # --- [MODIFICADO] Carga del plan de prompts específico del lote ---
+    # --- [INICIO DE LA CORRECCIÓN] ---
+    # Se ha modificado esta sección para buscar el plan en la carpeta correcta.
+    
+    # 1. Primero, obtenemos la carpeta del lote/bloque que está activo.
+    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+
+    # 2. LUEGO, buscamos la carpeta "Documentos aplicación" DENTRO de la carpeta del lote.
+    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
+    # --- [FIN DE LA CORRECCIÓN] ---
+
+    # Carga del plan de prompts específico del lote (esta lógica ya era correcta)
     lot_name_clean = clean_folder_name(st.session_state.get('selected_lot', ''))
     plan_filename = f"plan_de_prompts_{lot_name_clean}.json"
     plan_conjunto_id = find_file_by_name(service, plan_filename, docs_app_folder_id)
@@ -1192,7 +1201,6 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
             project_name = st.session_state.selected_project['name']
             safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
             
-            # <-- MODIFICADO: Nombre de archivo del cuerpo del documento es específico del lote
             lot_name_clean_filename = lot_name_clean.replace(' ', '_')
             nombre_archivo_final = f"Cuerpo_Memoria_{safe_project_name}_{lot_name_clean_filename}.docx"
             
@@ -1228,7 +1236,6 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
             type="primary", 
             disabled=not st.session_state.get("generated_doc_buffer")
         )
-        
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
     st.markdown("<h3>FASE 6: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
     
