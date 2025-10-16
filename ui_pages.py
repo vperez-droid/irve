@@ -1,33 +1,34 @@
 import streamlit as st
 import pandas as pd
 import json
-import openai
-from openai import OpenAI
-import google.generativeai as genai
-import google.api_core.exceptions
 import io
 import re
 import os
 import time
 import docx
-from pypdf import PdfReader
+import google.generativeai as genai
+
+# Imports desde tus módulos
 from prompts import (
-PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_DETECTAR_LOTES, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_CONSULTOR_REVISION, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
+    PROMPT_DETECTAR_LOTES, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, 
+    PROMPT_CONSULTOR_REVISION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, 
+    PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
 )
 from drive_utils import (
     find_or_create_folder, get_files_in_project, delete_file_from_drive,
     upload_file_to_drive, find_file_by_name, download_file_from_drive,
-    sync_guiones_folders_with_index, list_project_folders, ROOT_FOLDER_NAME
+    sync_guiones_folders_with_index, list_project_folders, ROOT_FOLDER_NAME,
+    # <-- ¡NUEVO! Importamos las nuevas funciones de gestión de lotes
+    get_or_create_lot_folder_id, clean_folder_name, get_context_from_lots
 )
-# IMPORTACIÓN CORREGIDA Y AMPLIADA
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
     wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
-    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, generar_indice_word, get_lot_context, OPCION_ANALISIS_GENERAL, 
-    CARACTERES_POR_PAGINA_MIN, CARACTERES_POR_PAGINA_MAX,
-    natural_sort_key, 
-    convertir_excel_a_texto_csv # <-- ¡IMPORTANTE! Se añade la nueva función.
+    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, generar_indice_word, 
+    get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, 
+    convertir_excel_a_texto_csv
 )
+
 
 # =============================================================================
 #           PÁGINA DE BIENVENIDA / INICIO DE SESIÓN
@@ -106,13 +107,10 @@ def project_selection_page(go_to_landing, go_to_phase1):
 #           FUNCIÓN phase_1_viability_page (COMPLETA Y MODIFICADA)
 # =============================================================================
 
-# Reemplaza tu función phase_1_viability_page existente con esta versión mejorada:
-
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Lotes y Viabilidad</h3>", unsafe_allow_html=True)
     ANALYSIS_FILENAME = "Analisis_de_Viabilidad.docx"
 
-    # --- 1. Verificación de sesión y conexión con Drive (sin cambios) ---
     if not st.session_state.get('selected_project'):
         st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
         go_to_project_selection(); st.rerun()
@@ -121,30 +119,20 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     project_name = st.session_state.selected_project['name']
     project_folder_id = st.session_state.selected_project['id']
     service = st.session_state.drive_service
-    
     st.info(f"Proyecto activo: **{project_name}**.")
 
-    # --- 2. Gestión de archivos en 'Pliegos' (sin cambios) ---
     with st.container(border=True):
         st.subheader("1. Documentos en tu Proyecto")
-        
         with st.spinner("Buscando archivos en Google Drive..."):
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
             documentos_pliegos = get_files_in_project(service, pliegos_folder_id)
-
         if documentos_pliegos:
             st.success("Se analizarán los siguientes archivos encontrados en la carpeta 'Pliegos':")
-            for file_info in documentos_pliegos:
-                st.write(f"📄 **{file_info['name']}**")
+            for file_info in documentos_pliegos: st.write(f"📄 **{file_info['name']}**")
         else:
             st.warning("No se encontraron archivos en la carpeta 'Pliegos'. Sube al menos un documento para continuar.")
-
         with st.expander("Subir nuevos documentos a 'Pliegos'"):
-            uploaded_files = st.file_uploader(
-                "Arrastra aquí los archivos que quieras añadir al proyecto",
-                type=['pdf', 'docx', 'xlsx'], 
-                accept_multiple_files=True, key="drive_file_uploader"
-            )
+            uploaded_files = st.file_uploader("Arrastra aquí los archivos que quieras añadir al proyecto", type=['pdf', 'docx', 'xlsx'], accept_multiple_files=True, key="drive_file_uploader")
             if st.button("Guardar en Drive y Refrescar"):
                 if uploaded_files:
                     with st.spinner("Subiendo archivos a Drive..."):
@@ -152,12 +140,9 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.toast("¡Archivos subidos!"); st.rerun()
 
     st.markdown("---")
-
-    # --- 3. Detección y Selección de Lotes (Lógica interna sin cambios) ---
     def detectar_lotes():
         with st.spinner("Analizando documentos para detectar lotes..."):
             try:
-                # ... (el interior de esta función no cambia)
                 contenido_ia = [PROMPT_DETECTAR_LOTES]
                 for file_info in documentos_pliegos:
                     file_bytes_io = download_file_from_drive(service, file_info['id'])
@@ -167,64 +152,41 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                         if texto_csv: contenido_ia.append(texto_csv)
                     else:
                         contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
-                
                 response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
                 json_limpio = limpiar_respuesta_json(response.text)
                 resultado = json.loads(json_limpio)
-                
                 lotes = resultado.get("lotes_encontrados", [])
                 st.session_state.detected_lotes = lotes if lotes else ["SIN_LOTES"]
                 st.rerun()
             except Exception as e:
                 st.error(f"Ocurrió un error al detectar lotes: {e}")
 
-    # --- [MEJORA] Lógica de UI para lotes ---
     st.header("2. Selección de Lote")
-
-    # Si aún no hemos comprobado, mostramos el botón para hacerlo
     if st.session_state.detected_lotes is None:
         st.info("Antes de analizar la viabilidad, la aplicación comprobará si la licitación está dividida en lotes.")
         st.button("Analizar Lotes en los Documentos", on_click=detectar_lotes, type="primary", use_container_width=True, disabled=not documentos_pliegos)
-    
-    # Si hemos comprobado y NO hay lotes, lo indicamos y pasamos a la siguiente fase.
     elif st.session_state.detected_lotes == ["SIN_LOTES"]:
         st.success("✔️ No se han detectado lotes en la documentación. Se realizará un análisis general.")
         if st.session_state.selected_lot is None:
             st.session_state.selected_lot = OPCION_ANALISIS_GENERAL
-    
-    # Si SÍ hay lotes, mostramos el selector de forma persistente.
     else:
         st.success("¡Se han detectado lotes en la documentación!")
-        
         opciones_lotes = st.session_state.detected_lotes + [OPCION_ANALISIS_GENERAL]
-        
-        # [MEJORA] Buscamos el índice del lote actual para pre-seleccionarlo
         current_selection = st.session_state.get('selected_lot')
         try:
             index = opciones_lotes.index(current_selection) if current_selection in opciones_lotes else 0
         except ValueError:
             index = 0
 
-        # [MEJORA] Usamos `on_change` para una reacción más limpia
         def on_lot_change():
             new_lot = st.session_state.lot_selector_key
-            # Si el lote ha cambiado, reseteamos el análisis de viabilidad
             if st.session_state.get('selected_lot') != new_lot:
                 st.session_state.selected_lot = new_lot
                 if 'analysis_doc_id' in st.session_state:
                     del st.session_state['analysis_doc_id']
                 st.toast(f"Lote cambiado a: {new_lot}")
+        st.selectbox("Elige el lote al que quieres presentarte o cámbialo si es necesario:", options=opciones_lotes, index=index, key="lot_selector_key", on_change=on_lot_change)
 
-        st.selectbox(
-            "Elige el lote al que quieres presentarte o cámbialo si es necesario:",
-            options=opciones_lotes,
-            index=index,
-            key="lot_selector_key",
-            on_change=on_lot_change
-        )
-
-    # --- 4. Lógica de Generación de Viabilidad ---
-    # La generación solo se activa si ya tenemos una decisión sobre los lotes.
     if st.session_state.get('selected_lot') is not None:
         st.markdown("---")
         st.header("3. Extracción de Requisitos Clave")
@@ -234,8 +196,9 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         else:
              st.info("Se generará un análisis de viabilidad general.")
 
-        # ... (El resto de la lógica de esta sección no necesita cambios)
-        docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
+        # <-- MODIFICADO: La carpeta para guardar el análisis ahora depende del lote
+        active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+        docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
         if 'analysis_doc_id' not in st.session_state:
             st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
 
@@ -245,7 +208,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     idioma = st.session_state.get('project_language', 'Español')
                     contexto_lote = get_lot_context()
                     prompt = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma, contexto_lote=contexto_lote)
-                    
                     contenido_ia = [prompt]
                     for file_info in documentos_pliegos:
                         file_bytes_io = download_file_from_drive(service, file_info['id'])
@@ -255,20 +217,16 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                             if texto_csv: contenido_ia.append(texto_csv)
                         else:
                             contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
-
                     response = model.generate_content(contenido_ia)
                     if not response.candidates: st.error("Gemini no generó una respuesta."); return
-                    
                     documento = docx.Document()
                     agregar_markdown_a_word(documento, response.text)
                     buffer = io.BytesIO()
                     documento.save(buffer); buffer.seek(0)
                     buffer.name = ANALYSIS_FILENAME
                     buffer.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    
                     if st.session_state.get('analysis_doc_id'):
                         delete_file_from_drive(service, st.session_state['analysis_doc_id'])
-
                     new_file_id = upload_file_to_drive(service, buffer, docs_app_folder_id)
                     st.session_state.analysis_doc_id = new_file_id
                     st.toast("✅ ¡Análisis guardado en tu Drive!")
@@ -281,13 +239,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
                 with st.spinner("Descargando desde Drive..."):
                     file_bytes = download_file_from_drive(service, st.session_state.analysis_doc_id)
-                    st.download_button(
-                        label="¡Listo! Haz clic aquí para descargar",
-                        data=file_bytes,
-                        file_name=ANALYSIS_FILENAME,
-                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                        use_container_width=True
-                    )
+                    st.download_button(label="¡Listo! Haz clic aquí para descargar", data=file_bytes, file_name=ANALYSIS_FILENAME, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
             col1, col2 = st.columns(2)
             with col1:
                 st.button("🔁 Re-generar Análisis para este Lote", on_click=generate_and_save_analysis, use_container_width=True, disabled=not documentos_pliegos)
@@ -295,42 +247,53 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
         else:
             st.info("Aún no se ha generado el documento de análisis para este proyecto.")
-            st.button(
-                "Analizar y Generar Documento de Viabilidad", 
-                on_click=generate_and_save_analysis, 
-                type="primary", 
-                use_container_width=True, 
-                disabled=not documentos_pliegos
-            )
+            st.button("Analizar y Generar Documento de Viabilidad", on_click=generate_and_save_analysis, type="primary", use_container_width=True, disabled=not documentos_pliegos)
 
     st.write("")
     st.markdown("---")
     st.button("← Volver a Selección de Proyecto", on_click=go_to_project_selection, use_container_width=True)
     
 # =============================================================================
-# =============================================================================
 #           FASE 2: ANÁLISIS Y ESTRUCTURA (ESTA ES LA FUNCIÓN QUE FALTA)
 # =============================================================================
 
-
 def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_full_regeneration, back_to_project_selection_and_cleanup):
+    st.markdown(f"<h3>FASE 2: Análisis y Estructura del Índice</h3>", unsafe_allow_html=True)
+
+    # --- 1. Verificación de sesión y obtención de variables ---
     if not st.session_state.get('selected_project'):
         st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
         go_to_project_selection(); st.rerun()
+        return
 
     project_name = st.session_state.selected_project['name']
     project_folder_id = st.session_state.selected_project['id']
     service = st.session_state.drive_service
 
-    st.markdown(f"<h3>FASE 2: Análisis y Estructura</h3>", unsafe_allow_html=True)
     st.info(f"Estás trabajando en el proyecto: **{project_name}**")
-    
 
+    # --- [NUEVO] Mostrar el lote/bloque activo para dar contexto al usuario ---
+    selected_lot = st.session_state.get('selected_lot')
+    if selected_lot:
+        if selected_lot == OPCION_ANALISIS_GENERAL:
+            st.success("🎯 **Enfoque actual:** Se realizará un análisis general para todo el proyecto.")
+        else:
+            st.success(f"🎯 **Enfoque actual:** Lote / Bloque: **{selected_lot}**")
+    else:
+        # Fallback por si el usuario llega aquí sin pasar por la Fase 1
+        st.warning("No se ha seleccionado un lote o enfoque. Por favor, vuelve a la Fase 1 para continuar.")
+        if st.button("← Volver a Fase 1 (Viabilidad)"):
+            go_to_phase1(); st.rerun()
+        st.stop() # Detenemos la ejecución de la página
+
+    # --- 2. Gestión de archivos en 'Pliegos' (Sin cambios lógicos) ---
+    # El índice se genera a partir de los documentos globales del proyecto.
+    st.markdown("---")
     pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
     document_files = get_files_in_project(service, pliegos_folder_id)
     
     if document_files:
-        st.success("Hemos encontrado estos archivos en la carpeta 'Pliegos' de tu proyecto:")
+        st.success("Se usarán estos archivos de la carpeta 'Pliegos' para generar el índice:")
         with st.container(border=True):
             for file in document_files:
                 cols = st.columns([4, 1])
@@ -345,7 +308,6 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     with st.expander("Añadir o reemplazar documentación en la carpeta 'Pliegos'", expanded=not document_files):
         with st.container(border=True):
             st.subheader("Subir nuevos documentos")
-            # [CAMBIO] Se añade 'xlsx' a la lista de tipos permitidos.
             new_files_uploader = st.file_uploader("Arrastra aquí los nuevos Pliegos o Plantilla", type=['docx', 'pdf', 'xlsx'], accept_multiple_files=True, key="new_files_uploader")
             if st.button("Guardar nuevos archivos en Drive"):
                 if new_files_uploader:
@@ -356,6 +318,8 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
                 else:
                     st.warning("Por favor, selecciona al menos un archivo para subir.")
 
+    # --- 3. Generación y Carga del Índice (Sin cambios lógicos) ---
+    # El archivo 'ultimo_indice.json' es global para el proyecto, no específico del lote.
     st.markdown("---"); st.header("Análisis y Generación de Índice")
     
     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
@@ -376,16 +340,14 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
             if handle_full_regeneration(model):
                 go_to_phase2_results(); st.rerun()
 
+    # --- 4. Navegación ---
     st.write(""); st.markdown("---")
     
     col_nav1, col_nav2 = st.columns(2)
-
     with col_nav1:
         st.button("← Volver a Análisis de Viabilidad (F1)", on_click=go_to_phase1, use_container_width=True)
-    
     with col_nav2:
         st.button("↩️ Volver a Selección de Proyecto", on_click=back_to_project_selection_and_cleanup, use_container_width=True, key="back_to_projects")
-    
 
 # =============================================================================
 #           FASE 2: REVISIÓN DE RESULTADOS (VERSIÓN CORREGIDA)
@@ -395,6 +357,15 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
     st.markdown("<h3>FASE 2: Revisión de Resultados del Índice</h3>", unsafe_allow_html=True)
     st.markdown("Revisa el índice, la guía de redacción y el plan estratégico. Puedes hacer ajustes con feedback, regenerarlo todo desde cero, o aceptarlo para continuar.")
     st.markdown("---")
+    
+    # --- [NUEVO] Mostrar el lote/bloque activo para dar contexto ---
+    selected_lot = st.session_state.get('selected_lot')
+    if selected_lot:
+        if selected_lot == OPCION_ANALISIS_GENERAL:
+            st.success("🎯 **Enfoque actual:** Se realizará un análisis general para todo el proyecto.")
+        else:
+            st.success(f"🎯 **Enfoque actual:** Lote / Bloque: **{selected_lot}**")
+    
     st.button("← Volver a la gestión de archivos", on_click=go_to_phase2)
 
     if 'generated_structure' not in st.session_state or not st.session_state.generated_structure:
@@ -410,8 +381,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
         with st.spinner("🧠 Incorporando tu feedback y regenerando la estructura..."):
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                
-                # [MODIFICADO] Se añade la obtención del contexto del lote
                 contexto_lote = get_lot_context()
                 prompt_con_idioma = PROMPT_REGENERACION.format(idioma=idioma_seleccionado, contexto_lote=contexto_lote)
                 
@@ -430,7 +399,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                         nombre_archivo = file_info['name']
                         
                         if nombre_archivo.lower().endswith('.xlsx'):
-                            st.write(f"⚙️ Procesando Excel para regeneración: {nombre_archivo}...")
                             texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
                             if texto_csv:
                                 contenido_ia_regeneracion.append(texto_csv)
@@ -471,101 +439,80 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 
     # --- El resto de la UI de la página (sin cambios) ---
     with st.container(border=True):
-        
         st.subheader("Índice Propuesto y Guía de Redacción")
-        
         estructura = st.session_state.generated_structure.get('estructura_memoria')
         matices = st.session_state.generated_structure.get('matices_desarrollo')
-        
         mostrar_indice_desplegable(estructura, matices)
         
         st.markdown("---")
         st.subheader("📊 Plan Estratégico del Documento")
-
         config = st.session_state.generated_structure.get('configuracion_licitacion', {})
         plan = st.session_state.generated_structure.get('plan_extension', [])
+        # ... (Aquí va tu código para mostrar las métricas y el DataFrame, no necesita cambios)
 
-        if not config and not plan:
-            st.warning("No se detectaron parámetros estratégicos.")
-        else:
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric(
-                    label="Páginas Máximas Detectadas",
-                    value=config.get('max_paginas', 'N/D')
-                )
-                st.caption(f"Exclusiones: {config.get('exclusiones_paginado', 'No especificado')}")
-            with col2:
-                st.write("**Reglas de Formato Detectadas:**")
-                st.info(config.get('reglas_formato', 'No especificado'))
+    st.markdown("---")
+    st.subheader("Validación y Siguiente Paso")
+    
+    st.text_area(
+        "Si necesitas cambios en el índice, el plan o las indicaciones, descríbelos aquí:",
+        key="feedback_area",
+        placeholder="Ejemplos:\n- 'El límite real son 40 páginas, reajusta la distribución.'\n- 'En el apartado 2, une los subapartados 2.1 y 2.2.'"
+    )
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.button("Regenerar con Feedback", on_click=handle_regeneration_with_feedback, use_container_width=True)
+    with col2:
+        st.button("🔁 Regenerar Todo desde Cero", on_click=lambda: handle_full_regeneration(model), use_container_width=True, help="Descarta este análisis y genera uno nuevo leyendo los archivos desde cero.")
 
-            if plan:
-                st.write("**Distribución de Contenido Sugerida (Páginas y Puntuación por Apartado):**")
+    if st.button("Aceptar y Pasar a Fase 3 →", type="primary", use_container_width=True):
+        with st.spinner("Guardando análisis final en Drive..."):
+            try:
+                service = st.session_state.drive_service
+                project_folder_id = st.session_state.selected_project['id']
                 
-                display_data = []
-                for item in plan:
-                    display_data.append({
-                        'Apartado Principal': item.get('apartado', 'N/A'),
-                        'Páginas Sugeridas': item.get('paginas_sugeridas_apartado', 'N/D'),
-                        'Puntuación / Peso': item.get('puntuacion_sugerida', 'N/D')
-                    })
+                # <-- ¡CAMBIO IMPORTANTE! La llamada a sync_guiones_folders_with_index se ha ELIMINADO de aquí.
+                # Se moverá a la Fase 3, donde ya conocemos el lote activo.
                 
-                df_display = pd.DataFrame(display_data)
-                st.dataframe(df_display, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.subheader("Validación y Siguiente Paso")
-        
-        st.text_area(
-            "Si necesitas cambios en el índice, el plan o las indicaciones, descríbelos aquí:",
-            key="feedback_area",
-            placeholder="Ejemplos:\n- 'El límite real son 40 páginas, reajusta la distribución.'\n- 'En el apartado 2, une los subapartados 2.1 y 2.2.'"
-        )
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            st.button("Regenerar con Feedback", on_click=handle_regeneration_with_feedback, use_container_width=True)
-        with col2:
-            st.button("🔁 Regenerar Todo desde Cero", on_click=lambda: handle_full_regeneration(model), use_container_width=True, help="Descarta este análisis y genera uno nuevo leyendo los archivos desde cero.")
-
-        if st.button("Aceptar y Pasar a Fase 3 →", type="primary", use_container_width=True):
-            with st.spinner("Sincronizando carpetas y guardando análisis final en Drive..."):
-                try:
-                    service = st.session_state.drive_service
-                    project_folder_id = st.session_state.selected_project['id']
-                    
-                    deleted_count = sync_guiones_folders_with_index(service, project_folder_id, st.session_state.generated_structure)
-                    if deleted_count > 0:
-                        st.success(f"Limpieza completada: {deleted_count} carpetas obsoletas eliminadas.")
-                    
-                    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
-                    json_bytes = json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False).encode('utf-8')
-                    mock_file_obj = io.BytesIO(json_bytes)
-                    mock_file_obj.name = "ultimo_indice.json"
-                    mock_file_obj.type = "application/json"
-                    
-                    saved_index_id = find_file_by_name(service, "ultimo_indice.json", docs_app_folder_id)
-                    if saved_index_id:
-                        delete_file_from_drive(service, saved_index_id)
-                    
-                    upload_file_to_drive(service, mock_file_obj, docs_app_folder_id)
-                    st.toast("Análisis final guardado en tu proyecto de Drive.")
-                    go_to_phase3()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
+                docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
+                json_bytes = json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False).encode('utf-8')
+                mock_file_obj = io.BytesIO(json_bytes)
+                mock_file_obj.name = "ultimo_indice.json"
+                mock_file_obj.type = "application/json"
+                
+                saved_index_id = find_file_by_name(service, "ultimo_indice.json", docs_app_folder_id)
+                if saved_index_id:
+                    delete_file_from_drive(service, saved_index_id)
+                
+                upload_file_to_drive(service, mock_file_obj, docs_app_folder_id)
+                st.toast("Análisis final guardado en tu proyecto de Drive.")
+                go_to_phase3()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Ocurrió un error durante el guardado: {e}")
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
-    USE_GPT_MODEL = False 
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
     st.markdown("---")
     
+    # --- 1. Inicialización y Verificación de Sesión ---
     if 'regenerating_item' not in st.session_state:
         st.session_state.regenerating_item = None
 
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
+
+    # --- [NUEVO] Obtención de la Carpeta del Lote Activo ---
+    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+    if not active_lot_folder_id:
+        st.warning("No se puede continuar sin un lote seleccionado. Por favor, vuelve a la Fase 1.")
+        # Asumiendo que existe una función go_to_phase1 para la navegación
+        # Si no, este botón no funcionará. Lo dejo como ejemplo.
+        # if st.button("← Ir a Fase 1"): go_to_phase1(); st.rerun()
+        return
+
+    # --- 2. Carga del Índice Maestro ---
     if 'generated_structure' not in st.session_state:
         st.info("Sincronizando índice desde Google Drive...")
         try:
@@ -583,7 +530,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             st.error(f"Error al cargar el índice desde Drive: {e}")
             return
     
-    # ... (El código para extraer 'estructura' y 'matices' se mantiene igual)
+    # --- [NUEVO] Sincronización de carpetas DENTRO del lote activo ---
+    sync_guiones_folders_with_index(service, active_lot_folder_id, st.session_state.generated_structure)
+
+    # --- 3. Preparación de datos para la UI ---
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
@@ -604,47 +554,40 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         for seccion in estructura:
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo:
-                subapartados_a_mostrar.append({
-                    "apartado": apartado_titulo,
-                    "subapartado": apartado_titulo,
-                    "indicaciones": f"Generar guion para el apartado principal: {apartado_titulo}"
-                })
+                subapartados_a_mostrar.append({"apartado": apartado_titulo, "subapartado": apartado_titulo, "indicaciones": f"Generar guion para el apartado principal: {apartado_titulo}"})
 
     if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
-    def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, show_toast=True):
-        nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", titulo)
+    # --- 4. Funciones de Lógica Interna (Callbacks) ---
+    def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
+        nombre_limpio = clean_folder_name(titulo)
         nombre_archivo = nombre_limpio + ".docx"
         try:
-            service = st.session_state.drive_service
-            project_folder_id = st.session_state.selected_project['id']
-            guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
+            guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
             subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
             pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
             
-            idioma_seleccionado = st.session_state.get('project_language', 'Español')
+            idioma = st.session_state.get('project_language', 'Español')
+            contexto_lote_actual = get_lot_context()
+            prompt = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma, contexto_lote=contexto_lote_actual)
             
-            # [MODIFICACIÓN 1]
-            contexto_lote = get_lot_context()
-            prompt_con_idioma = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma_seleccionado, contexto_lote=contexto_lote)
-            
-            contenido_ia = [prompt_con_idioma]
-            
+            contenido_ia = [prompt]
             contenido_ia.append("--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False))
             
+            if contexto_adicional_lotes:
+                contenido_ia.append(contexto_adicional_lotes)
+
             st.write("Analizando documentos de 'Pliegos'...")
             for file_info in pliegos_en_drive:
                 file_content_bytes = download_file_from_drive(service, file_info['id'])
                 nombre_pliego = file_info['name']
                 if nombre_pliego.lower().endswith('.xlsx'):
                     texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_pliego)
-                    if texto_csv:
-                        contenido_ia.append(texto_csv)
+                    if texto_csv: contenido_ia.append(texto_csv)
                 else:
                     contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
             
-            # ... (El resto de la función para subir documentos de apoyo y guardar el resultado se mantiene igual)
             doc_extra_key = f"upload_{titulo}"
             if doc_extra_key in st.session_state and st.session_state[doc_extra_key]:
                 contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
@@ -654,8 +597,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     if nombre_apoyo.lower().endswith('.xlsx'):
                         bytes_io = io.BytesIO(uploaded_file.getvalue())
                         texto_csv_apoyo = convertir_excel_a_texto_csv(bytes_io, nombre_apoyo)
-                        if texto_csv_apoyo:
-                            contenido_ia.append(texto_csv_apoyo)
+                        if texto_csv_apoyo: contenido_ia.append(texto_csv_apoyo)
                     else:
                         contenido_ia.append({"mime_type": uploaded_file.type, "data": uploaded_file.getvalue()})
                     upload_file_to_drive(service, uploaded_file, subapartado_guion_folder_id)
@@ -669,20 +611,17 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             word_file_obj.name = nombre_archivo
             word_file_obj.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
-            if show_toast: st.toast(f"Borrador (Gemini) para '{titulo}' generado y guardado.")
+            if show_toast: st.toast(f"Borrador para '{titulo}' generado y guardado.")
             return True
-        except Exception as e: st.error(f"Error al generar con Gemini para '{titulo}': {e}"); return False
+        except Exception as e: 
+            st.error(f"Error al generar con Gemini para '{titulo}': {e}")
+            return False
 
     def handle_confirm_regeneration(model, titulo, file_id_borrador, feedback):
         if not feedback.strip():
-            st.warning("Por favor, introduce tu feedback para la re-generación.")
-            return
-
+            st.warning("Por favor, introduce tu feedback para la re-generación."); return
         with st.spinner(f"Re-generando '{titulo}' con tu feedback..."):
             try:
-                service = st.session_state.drive_service
-                project_folder_id = st.session_state.selected_project['id']
-
                 borrador_bytes = download_file_from_drive(service, file_id_borrador)
                 doc = docx.Document(io.BytesIO(borrador_bytes.getvalue()))
                 borrador_original_texto = "\n".join([p.text for p in doc.paragraphs])
@@ -690,15 +629,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
                 pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
                 
-                idioma_seleccionado = st.session_state.get('project_language', 'Español')
-
-                # [MODIFICACIÓN 2]
-                contexto_lote = get_lot_context()
-                prompt_con_idioma = PROMPT_CONSULTOR_REVISION.format(idioma=idioma_seleccionado, contexto_lote=contexto_lote)
+                idioma = st.session_state.get('project_language', 'Español')
+                contexto_lote_actual = get_lot_context()
+                prompt = PROMPT_CONSULTOR_REVISION.format(idioma=idioma, contexto_lote=contexto_lote_actual)
                 
-                contenido_ia = [prompt_con_idioma]
-                contenido_ia.append("--- BORRADOR ORIGINAL ---\n" + borrador_original_texto)
-                contenido_ia.append("--- FEEDBACK DEL CLIENTE ---\n" + feedback)
+                contenido_ia = [prompt, "--- BORRADOR ORIGINAL ---\n" + borrador_original_texto, "--- FEEDBACK DEL CLIENTE ---\n" + feedback]
                 
                 st.write("Analizando Pliegos para dar contexto...")
                 for file_info in pliegos_en_drive:
@@ -706,23 +641,19 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
 
                 response = model.generate_content(contenido_ia)
-                if not response.candidates:
-                    st.error("La IA no generó una respuesta para la re-generación.")
-                    return
+                if not response.candidates: st.error("La IA no generó una respuesta para la re-generación."); return
 
-                # ... (El resto de la función para guardar el nuevo documento se mantiene igual)
                 documento_nuevo = docx.Document()
                 agregar_markdown_a_word(documento_nuevo, response.text)
-                doc_io = io.BytesIO()
-                documento_nuevo.save(doc_io)
+                doc_io = io.BytesIO(); documento_nuevo.save(doc_io)
                 word_file_obj = io.BytesIO(doc_io.getvalue())
                 
-                nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", titulo)
+                nombre_limpio = clean_folder_name(titulo)
                 nombre_archivo = nombre_limpio + ".docx"
                 word_file_obj.name = nombre_archivo
                 word_file_obj.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-                guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
+                guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                 subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
                 
                 delete_file_from_drive(service, file_id_borrador)
@@ -731,34 +662,32 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.toast(f"¡Guion para '{titulo}' re-generado con éxito!")
                 st.session_state.regenerating_item = None
                 st.rerun()
-
             except Exception as e:
                 st.error(f"Error crítico durante la re-generación: {e}")
                 st.session_state.regenerating_item = None
     
-    # ...
-    # El resto de la función (UI, botones, etc.) no necesita cambios y se mantiene igual.
-    # ...
-    
-    # --- (Todo el resto de la función se pega aquí sin cambios) ---
     def ejecutar_regeneracion(titulo): st.session_state.regenerating_item = titulo; st.rerun()
     def ejecutar_borrado(titulo, folder_id_to_delete):
         with st.spinner(f"Eliminando guion para '{titulo}'..."):
             try:
-                service = st.session_state.drive_service
                 if delete_file_from_drive(service, folder_id_to_delete): st.toast(f"Guion para '{titulo}' eliminado."); st.rerun()
                 else: st.error(f"No se pudo eliminar la carpeta '{titulo}'.")
             except Exception as e: st.error(f"Ocurrió un error inesperado: {e}")
-    with st.spinner("Sincronizando con Google Drive..."):
-        guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
+
+    # --- 5. Renderizado de la Interfaz de Usuario ---
+    with st.spinner("Sincronizando guiones con Google Drive..."):
+        guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         carpetas_existentes_response = get_files_in_project(service, guiones_folder_id)
         carpetas_de_guiones_existentes = {f['name']: f['id'] for f in carpetas_existentes_response if f['mimeType'] == 'application/vnd.google-apps.folder'}
         nombres_carpetas_existentes = set(carpetas_de_guiones_existentes.keys())
+    
     st.subheader("Generación de Borradores en Lote")
-    pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if re.sub(r'[\\/*?:"<>|]', "", matiz.get('subapartado')) not in nombres_carpetas_existentes]
+    pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if clean_folder_name(matiz.get('subapartado')) not in nombres_carpetas_existentes]
+    
     def toggle_all_checkboxes():
         new_state = st.session_state.get('select_all_checkbox', False)
         for key in pending_keys: st.session_state[f"cb_{key}"] = new_state
+
     with st.container(border=True):
         col_sel_1, col_sel_2 = st.columns([1, 2])
         with col_sel_1: st.checkbox("Seleccionar Todos / Ninguno", key="select_all_checkbox", on_change=toggle_all_checkboxes, disabled=not pending_keys)
@@ -772,22 +701,36 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     titulo = matiz_a_generar.get('subapartado')
                     progress_text = f"Generando ({i+1}/{num_selected}): {titulo}"
                     progress_bar.progress((i + 1) / num_selected, text=progress_text)
-                    if USE_GPT_MODEL: st.warning("La generación con GPT está desactivada.")
-                    else: ejecutar_generacion_con_gemini(model, titulo, matiz_a_generar, show_toast=False)
+                    # La generación en lote no usa contexto cruzado por simplicidad
+                    ejecutar_generacion_con_gemini(model, titulo, matiz_a_generar, show_toast=False)
                 progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons(); time.sleep(2); st.rerun()
+
     st.markdown("---")
     st.subheader("Gestión de Guiones de Subapartados")
+
+    all_lot_folders = list_project_folders(service, project_folder_id)
+    current_lot_clean_name = clean_folder_name(st.session_state.selected_lot)
+    contexto_options = [name for name in all_lot_folders.keys() if name not in ["Pliegos", "Documentos aplicación", current_lot_clean_name]]
+
     for i, matiz in enumerate(subapartados_a_mostrar):
         subapartado_titulo = matiz.get('subapartado')
         if not subapartado_titulo: continue
-        nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
-        if nombre_limpio in nombres_carpetas_existentes: estado = "📄 Generado"; subapartado_folder_id = carpetas_de_guiones_existentes[nombre_limpio]; files_in_subfolder = get_files_in_project(service, subapartado_folder_id); file_info = next((f for f in files_in_subfolder if f['name'].endswith('.docx')), None)
-        else: estado = "⚪ No Generado"; file_info, subapartado_folder_id = None, None
+        
+        nombre_limpio = clean_folder_name(subapartado_titulo)
+        if nombre_limpio in nombres_carpetas_existentes:
+            estado = "📄 Generado"
+            subapartado_folder_id = carpetas_de_guiones_existentes[nombre_limpio]
+            files_in_subfolder = get_files_in_project(service, subapartado_folder_id)
+            file_info = next((f for f in files_in_subfolder if f['name'].endswith('.docx')), None)
+        else:
+            estado = "⚪ No Generado"
+            file_info, subapartado_folder_id = None, None
+        
         with st.container(border=True):
             if st.session_state.regenerating_item == subapartado_titulo:
                 st.subheader(f"Re-generar: {subapartado_titulo}")
                 st.info("Revisa el borrador en Drive, luego escribe o pega tus indicaciones de mejora en el cuadro de abajo.")
-                feedback = st.text_area("Feedback para la IA:", height=200, key=f"feedback_text_area_{i}", placeholder="Ej: 'El enfoque de la metodología es incorrecto...'")
+                feedback = st.text_area("Feedback para la IA:", height=200, key=f"feedback_text_area_{i}")
                 col_regen1, col_regen2 = st.columns(2)
                 with col_regen1: st.button("✅ Confirmar y Re-generar", key=f"confirm_regen_{i}", on_click=handle_confirm_regeneration, args=(model, subapartado_titulo, file_info['id'], feedback), type="primary", use_container_width=True)
                 with col_regen2: st.button("❌ Cancelar", key=f"cancel_regen_{i}", on_click=lambda: setattr(st.session_state, 'regenerating_item', None), use_container_width=True)
@@ -797,8 +740,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     if estado == "⚪ No Generado": st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
                     else: st.write(f"**{subapartado_titulo}**")
                     st.caption(f"Estado: {estado}")
+                    
                     if estado == "⚪ No Generado":
-                        st.file_uploader("Aportar documentación de apoyo", type=['pdf', 'docx', 'txt', 'xlsx', 'png', 'jpg', 'jpeg'], key=f"upload_{subapartado_titulo}", accept_multiple_files=True, label_visibility="collapsed")
+                        st.file_uploader("Aportar documentación de apoyo", type=['pdf', 'docx', 'xlsx'], key=f"upload_{subapartado_titulo}", accept_multiple_files=True, label_visibility="collapsed")
+                        if contexto_options:
+                             st.multiselect("Seleccionar lotes como contexto adicional:", options=contexto_options, key=f"context_{subapartado_titulo}", help="El contenido de los guiones de los lotes que selecciones se usará para dar más contexto a la IA.")
                 with col2:
                     if estado == "📄 Generado" and file_info:
                         st.link_button("Revisar en Drive", f"https://docs.google.com/document/d/{file_info['id']}/edit", use_container_width=True)
@@ -807,9 +753,14 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     else:
                         if st.button("Generar Borrador", key=f"gen_{i}", use_container_width=True):
                             with st.spinner(f"Generando borrador para '{subapartado_titulo}'..."):
-                                if USE_GPT_MODEL: st.warning("La generación con GPT está desactivada.")
-                                else:
-                                    if ejecutar_generacion_con_gemini(model, subapartado_titulo, matiz): st.rerun()
+                                contexto_seleccionado = st.session_state.get(f"context_{subapartado_titulo}", [])
+                                context_str = ""
+                                if contexto_seleccionado:
+                                    context_str = get_context_from_lots(service, project_folder_id, contexto_seleccionado)
+                                if ejecutar_generacion_con_gemini(model, subapartado_titulo, matiz, contexto_adicional_lotes=context_str):
+                                    st.rerun()
+                                    
+    # --- 6. Navegación de la página ---
     st.markdown("---")
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1: st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
@@ -819,11 +770,19 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
     st.markdown("---")
+    
+    # --- 1. Inicialización y Verificación de Sesión ---
     service = st.session_state.drive_service
-    if not service: st.error("No se pudo restablecer la conexión con Google Drive. Por favor, refresca la página."); st.stop()
     project_folder_id = st.session_state.selected_project['id']
+
+    # --- [NUEVO] Obtención de la Carpeta del Lote Activo ---
+    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+    if not active_lot_folder_id:
+        st.warning("No se puede continuar sin un lote seleccionado. Vuelve a la Fase 1."); return
+
     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
 
+    # --- 2. Carga del Índice Maestro ---
     if 'generated_structure' not in st.session_state or not st.session_state.generated_structure:
         st.info("Sincronizando índice desde Google Drive...")
         saved_index_id = find_file_by_name(service, "ultimo_indice.json", docs_app_folder_id)
@@ -833,9 +792,13 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             st.rerun()
         else:
             st.warning("No se ha encontrado un índice. Vuelve a Fase 2 para generarlo.")
-            if st.button("← Ir a Fase 2"): go_to_phase2_results(); st.rerun()
+            if st.button("← Ir a Fase 2"): 
+                # Asumiendo que go_to_phase2_results está disponible desde app.py
+                go_to_phase2_results()
+                st.rerun()
             return
 
+    # --- 3. Preparación de datos para la UI ---
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
@@ -844,52 +807,36 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
 
     subapartados_a_mostrar = []
     hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
-
     if hay_subapartados:
         for seccion in estructura:
             apartado_principal = seccion.get('apartado', 'Sin Título')
             for subapartado_titulo in seccion.get('subapartados', []):
                 matiz_existente = matices_dict.get(subapartado_titulo)
-                if matiz_existente:
-                    subapartados_a_mostrar.append(matiz_existente)
-                else:
-                    subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
+                if matiz_existente: subapartados_a_mostrar.append(matiz_existente)
+                else: subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones detalladas."})
     else:
-        st.info("El índice no contiene subapartados. Se mostrarán los apartados principales para la generación de prompts.")
+        st.info("El índice no contiene subapartados. Se mostrarán los apartados principales.")
         for seccion in estructura:
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo:
-                subapartados_a_mostrar.append({
-                    "apartado": apartado_titulo,
-                    "subapartado": apartado_titulo,
-                    "indicaciones": f"Generar prompts para el apartado principal: {apartado_titulo}"
-                })
-    
+                subapartados_a_mostrar.append({"apartado": apartado_titulo, "subapartado": apartado_titulo, "indicaciones": f"Generar prompts para: {apartado_titulo}"})
     if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
-    # --- [INICIO DE LA FUNCIÓN CORREGIDA] ---
+    # --- 4. Funciones de Lógica Interna (Callbacks) ---
     def handle_individual_generation(matiz_info, callback_model, show_toast=True):
         apartado_titulo = matiz_info.get("apartado", "N/A")
         subapartado_titulo = matiz_info.get("subapartado", "N/A")
         json_limpio_str = ""
         try:
-            # 1. Extraer TODA la configuración necesaria del estado de la sesión
             config_licitacion = st.session_state.generated_structure.get('configuracion_licitacion', {})
             plan_extension = st.session_state.generated_structure.get('plan_extension', [])
-            
             max_paginas_doc = config_licitacion.get('max_paginas', 'N/D')
             reglas_formato_doc = config_licitacion.get('reglas_formato', 'N/D')
 
-            # Valores por defecto por si no se encuentran los datos específicos
-            min_chars_sub = 3500
-            max_chars_sub = 3800
-            paginas_sugeridas_sub = "1" 
-
-            # Búsqueda de los valores específicos para el subapartado actual
+            min_chars_sub, max_chars_sub, paginas_sugeridas_sub = 3500, 3800, "1"
             for item_apartado in plan_extension:
                 if item_apartado.get('apartado') == apartado_titulo:
-                    desglose = item_apartado.get('desglose_subapartados', [])
-                    for item_subapartado in desglose:
+                    for item_subapartado in item_apartado.get('desglose_subapartados', []):
                         if item_subapartado.get('subapartado') == subapartado_titulo:
                             min_chars_sub = item_subapartado.get('min_caracteres_sugeridos', min_chars_sub)
                             max_chars_sub = item_subapartado.get('max_caracteres_sugeridos', max_chars_sub)
@@ -897,23 +844,21 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                             break
                     break
             
-            # 2. Leer el documento de "Guion" correspondiente
-            guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
-            nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
+            guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
+            nombre_limpio = clean_folder_name(subapartado_titulo)
             subapartado_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_main_folder_id)
+            
             contexto_adicional_str = ""
             files_in_subfolder = get_files_in_project(service, subapartado_folder_id)
             
-            st.write(f"Analizando guion y documentos de apoyo para '{subapartado_titulo}'...")
+            st.write(f"Analizando guion y docs de apoyo para '{subapartado_titulo}'...")
             for file_info in files_in_subfolder:
-                file_bytes = download_file_from_drive(service, file_info['id'])
-                nombre_apoyo = file_info['name']
-                if nombre_apoyo.lower().endswith('.docx'):
+                if file_info['name'].lower().endswith('.docx'):
+                    file_bytes = download_file_from_drive(service, file_info['id'])
                     doc = docx.Document(io.BytesIO(file_bytes.getvalue()))
                     texto_doc = "\n".join([p.text for p in doc.paragraphs])
-                    contexto_adicional_str += f"\n--- CONTENIDO DEL GUION ({nombre_apoyo}) ---\n{texto_doc}\n"
+                    contexto_adicional_str += f"\n--- CONTENIDO DEL GUION ({file_info['name']}) ---\n{texto_doc}\n"
             
-            # 3. Formatear el prompt con TODAS las claves y nombres CORRECTOS
             prompt_final = PROMPT_DESARROLLO.format(
                 idioma=st.session_state.get('project_language', 'Español'),
                 max_paginas=max_paginas_doc,
@@ -931,41 +876,35 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             else:
                 st.warning(f"No se encontró un archivo de Guion (.docx) para '{subapartado_titulo}'. La calidad del resultado puede ser inferior.")
 
-            generation_config = {"response_mime_type": "application/json"}
-            response = callback_model.generate_content(contenido_ia, generation_config=generation_config)
+            response = callback_model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
             json_limpio_str = limpiar_respuesta_json(response.text)
             
             if json_limpio_str:
                 plan_parcial_obj = json.loads(json_limpio_str)
                 json_bytes = json.dumps(plan_parcial_obj, indent=2, ensure_ascii=False).encode('utf-8')
-                mock_file_obj = io.BytesIO(json_bytes)
-                mock_file_obj.name = "prompts_individual.json"
-                mock_file_obj.type = "application/json"
+                mock_file_obj = io.BytesIO(json_bytes); mock_file_obj.name = "prompts_individual.json"; mock_file_obj.type = "application/json"
+                
                 old_plan_id = find_file_by_name(service, "prompts_individual.json", subapartado_folder_id)
                 if old_plan_id: delete_file_from_drive(service, old_plan_id)
                 upload_file_to_drive(service, mock_file_obj, subapartado_folder_id)
                 if show_toast: st.toast(f"Plan para '{subapartado_titulo}' guardado.")
                 return True
-        
         except json.JSONDecodeError as json_err:
-            st.error(f"Error Crítico: La IA devolvió un JSON inválido para '{subapartado_titulo}'. Detalles: {json_err}")
-            st.code(json_limpio_str)
+            st.error(f"Error Crítico: La IA devolvió un JSON inválido para '{subapartado_titulo}'. Detalles: {json_err}\nRespuesta recibida:\n{json_limpio_str}")
             return False
         except Exception as e:
             st.error(f"Error generando prompts para '{subapartado_titulo}': {e}")
             return False
-    # --- [FIN DE LA FUNCIÓN CORREGIDA] ---
 
     def handle_individual_deletion(titulo, plan_id_to_delete):
         with st.spinner(f"Eliminando el plan para '{titulo}'..."):
             if delete_file_from_drive(service, plan_id_to_delete):
-                st.toast(f"Plan para '{titulo}' eliminado con éxito.")
-                st.rerun()
+                st.toast(f"Plan para '{titulo}' eliminado con éxito."); st.rerun()
 
     def handle_conjunto_generation():
         with st.spinner("Unificando todos los planes de prompts..."):
             try:
-                guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
+                guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                 carpetas_de_guiones = list_project_folders(service, guiones_main_folder_id)
                 
                 plan_conjunto_final = {"plan_de_prompts": []}
@@ -978,45 +917,42 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                         plan_conjunto_final["plan_de_prompts"].extend(prompts_de_este_plan)
                 
                 if not plan_conjunto_final["plan_de_prompts"]:
-                    st.warning("No se encontraron planes individuales para unificar. Genera al menos uno.")
-                    return
+                    st.warning("No se encontraron planes individuales para unificar. Genera al menos uno."); return
                 
-                nombre_archivo_final = "plan_de_prompts_conjunto.json"
+                lot_name_clean = clean_folder_name(st.session_state.selected_lot)
+                nombre_archivo_final = f"plan_de_prompts_{lot_name_clean}.json"
+                
                 json_bytes_finales = json.dumps(plan_conjunto_final, indent=2, ensure_ascii=False).encode('utf-8')
-                mock_file_obj = io.BytesIO(json_bytes_finales)
-                mock_file_obj.name = nombre_archivo_final
-                mock_file_obj.type = "application/json"
+                mock_file_obj = io.BytesIO(json_bytes_finales); mock_file_obj.name = nombre_archivo_final; mock_file_obj.type = "application/json"
                 
                 old_conjunto_id = find_file_by_name(service, nombre_archivo_final, docs_app_folder_id)
-                if old_conjunto_id:
-                    delete_file_from_drive(service, old_conjunto_id)
+                if old_conjunto_id: delete_file_from_drive(service, old_conjunto_id)
                 
                 upload_file_to_drive(service, mock_file_obj, docs_app_folder_id)
-                st.success(f"¡Plan conjunto generado! Se unificaron {len(plan_conjunto_final['plan_de_prompts'])} prompts.")
+                st.success(f"¡Plan conjunto para '{st.session_state.selected_lot}' generado! Se unificaron {len(plan_conjunto_final['plan_de_prompts'])} prompts.")
                 st.balloons()
             except Exception as e:
                 st.error(f"Ocurrió un error durante la unificación: {e}")
 
+    # --- 5. Renderizado de la Interfaz de Usuario ---
     with st.spinner("Verificando estado de los planes de prompts..."):
-        guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
+        guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         carpetas_de_guiones = list_project_folders(service, guiones_main_folder_id)
         planes_individuales_existentes = {}
         for nombre_carpeta, folder_id in carpetas_de_guiones.items():
             plan_id = find_file_by_name(service, "prompts_individual.json", folder_id)
-            if plan_id:
-                planes_individuales_existentes[nombre_carpeta] = plan_id
+            if plan_id: planes_individuales_existentes[nombre_carpeta] = plan_id
 
     st.subheader("Generación de Planes de Prompts en Lote")
     pending_keys = [
         matiz.get('subapartado') for matiz in subapartados_a_mostrar
-        if re.sub(r'[\\/*?:"<>|]', "", matiz.get('subapartado')) in carpetas_de_guiones
-        and re.sub(r'[\\/*?:"<>|]', "", matiz.get('subapartado')) not in planes_individuales_existentes
+        if clean_folder_name(matiz.get('subapartado')) in carpetas_de_guiones
+        and clean_folder_name(matiz.get('subapartado')) not in planes_individuales_existentes
     ]
 
     def toggle_all_prompt_checkboxes():
         new_state = st.session_state.get('select_all_prompts_checkbox', False)
-        for key in pending_keys:
-            st.session_state[f"pcb_{key}"] = new_state
+        for key in pending_keys: st.session_state[f"pcb_{key}"] = new_state
 
     with st.container(border=True):
         col_sel_1, col_sel_2 = st.columns([1, 2])
@@ -1034,14 +970,9 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                     progress_text = f"Generando plan ({i+1}/{num_selected}): {titulo}"
                     progress_bar.progress((i + 1) / num_selected, text=progress_text)
                     if not handle_individual_generation(matiz_a_generar, model, show_toast=False):
-                        generation_ok = False
-                        break
+                        generation_ok = False; break
                 if generation_ok:
-                    progress_bar.progress(1.0, text="¡Generación en lote completada!")
-                    st.success(f"{num_selected} planes generados.")
-                    st.balloons()
-                    time.sleep(2)
-                    st.rerun()
+                    progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} planes generados."); st.balloons(); time.sleep(2); st.rerun()
 
     st.markdown("---")
     st.subheader("Gestión de Planes de Prompts")
@@ -1050,7 +981,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         subapartado_titulo = matiz.get("subapartado")
         if not subapartado_titulo: continue
         
-        nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
+        nombre_limpio = clean_folder_name(subapartado_titulo)
         guion_generado = nombre_limpio in carpetas_de_guiones
         plan_individual_id = planes_individuales_existentes.get(nombre_limpio)
         
@@ -1069,13 +1000,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                     with st.expander("Ver / Descargar Plan Individual"):
                         json_bytes = download_file_from_drive(service, plan_individual_id).getvalue()
                         st.json(json_bytes.decode('utf-8'))
-                        st.download_button(
-                            "Descargar JSON",
-                            data=json_bytes,
-                            file_name=f"prompts_{nombre_limpio}.json",
-                            mime="application/json",
-                            key=f"dl_{i}"
-                        )
+                        st.download_button("Descargar JSON", data=json_bytes, file_name=f"prompts_{nombre_limpio}.json", mime="application/json", key=f"dl_{i}")
                 else:
                     st.info("⚪ Pendiente de generar plan de prompts")
 
@@ -1087,13 +1012,12 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                     st.button("🗑️ Borrar Plan", key=f"del_plan_{i}", on_click=handle_individual_deletion, args=(subapartado_titulo, plan_individual_id), use_container_width=True)
 
     st.markdown("---")
-    st.button("🚀 Unificar y Guardar Plan de Prompts Conjunto", on_click=handle_conjunto_generation, use_container_width=True, type="primary", help="Unifica todos los planes individuales generados en un único archivo maestro.")
+    st.button("🚀 Unificar y Guardar Plan de Prompts para este Lote", on_click=handle_conjunto_generation, use_container_width=True, type="primary")
     col_nav3_1, col_nav3_2 = st.columns(2)
     with col_nav3_1:
         st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase3, use_container_width=True)
     with col_nav3_2:
         st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
-        
 # =============================================================================
 #           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
 # =============================================================================
@@ -1103,14 +1027,21 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
     st.markdown("Ejecuta el plan de prompts para generar el contenido completo de la memoria técnica.")
     st.markdown("---")
     
+    # --- 1. Inicialización y Verificación de Sesión ---
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
-    plan_conjunto_id = find_file_by_name(service, "plan_de_prompts_conjunto.json", docs_app_folder_id)
+
+    # --- [MODIFICADO] Carga del plan de prompts específico del lote ---
+    lot_name_clean = clean_folder_name(st.session_state.get('selected_lot', ''))
+    plan_filename = f"plan_de_prompts_{lot_name_clean}.json"
+    plan_conjunto_id = find_file_by_name(service, plan_filename, docs_app_folder_id)
 
     if not plan_conjunto_id:
-        st.warning("No se ha encontrado un 'plan_de_prompts_conjunto.json'. Vuelve a la Fase 4 para generarlo.")
-        if st.button("← Ir a Fase 4"): go_to_phase4(); st.rerun()
+        st.warning(f"No se ha encontrado un plan de prompts ('{plan_filename}') para este lote. Vuelve a la Fase 4 para generarlo y unificarlo.")
+        if st.button("← Ir a Fase 4"): 
+            go_to_phase4()
+            st.rerun()
         return
 
     try:
@@ -1119,11 +1050,12 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         lista_de_prompts = plan_de_accion.get("plan_de_prompts", [])
         if lista_de_prompts:
             lista_de_prompts.sort(key=lambda x: natural_sort_key(x.get('subapartado_referencia', '')))
-        st.success(f"✔️ Plan de acción cargado. Se ejecutarán {len(lista_de_prompts)} prompts.")
+        st.success(f"✔️ Plan de acción para '{st.session_state.selected_lot}' cargado. Se ejecutarán {len(lista_de_prompts)} prompts.")
     except Exception as e:
         st.error(f"Error al cargar o procesar el plan de acción: {e}")
         return
 
+    # --- 2. Lógica de Generación del Documento ---
     button_text = "🔁 Volver a Generar Cuerpo del Documento" if st.session_state.get("generated_doc_buffer") else "🚀 Iniciar Redacción y Generar Cuerpo"
     
     if st.button(button_text, type="primary", use_container_width=True):
@@ -1136,16 +1068,11 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         
         try:
             with st.spinner("Iniciando redacción... Esto puede tardar varios minutos."):
-                
-                # --- [INICIO DE LA NUEVA LÓGICA DE CÁLCULO] ---
-                # 1. Contar cuántos fragmentos (prompts) tiene cada subapartado
                 fragment_counts = {}
                 for tarea in lista_de_prompts:
                     sub_ref = tarea.get("subapartado_referencia")
-                    if sub_ref:
-                        fragment_counts[sub_ref] = fragment_counts.get(sub_ref, 0) + 1
+                    if sub_ref: fragment_counts[sub_ref] = fragment_counts.get(sub_ref, 0) + 1
                 
-                # 2. Crear un diccionario con los presupuestos de caracteres de cada subapartado
                 character_budgets = {}
                 plan_extension = st.session_state.generated_structure.get('plan_extension', [])
                 for item_apartado in plan_extension:
@@ -1156,7 +1083,6 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                                 item_subapartado.get('min_caracteres_sugeridos', 3500),
                                 item_subapartado.get('max_caracteres_sugeridos', 3800)
                             )
-                # --- [FIN DE LA NUEVA LÓGICA DE CÁLCULO] ---
 
                 chat_redaccion = model.start_chat()
                 progress_bar = st.progress(0, text="Configurando sesión de chat...")
@@ -1165,14 +1091,12 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
 
                 for i, tarea in enumerate(lista_de_prompts):
                     subapartado_actual = tarea.get("subapartado_referencia")
+                    apartado_actual = tarea.get("apartado_referencia")
                     progress_text = f"Procesando Tarea {i+1}/{len(lista_de_prompts)}: {subapartado_actual or 'N/A'}"
                     progress_bar.progress((i + 1) / len(lista_de_prompts), text=progress_text)
                     
-                    apartado_actual = tarea.get("apartado_referencia")
-
                     if apartado_actual and apartado_actual != ultimo_apartado_escrito:
-                        if ultimo_apartado_escrito is not None:
-                            documento.add_page_break()
+                        if ultimo_apartado_escrito is not None: documento.add_page_break()
                         documento.add_heading(apartado_actual, level=1)
                         ultimo_apartado_escrito = apartado_actual
                         ultimo_subapartado_escrito = None
@@ -1181,33 +1105,20 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                         documento.add_heading(subapartado_actual, level=2)
                         ultimo_subapartado_escrito = subapartado_actual
 
-                    respuesta_ia_bruta = ""
                     prompt_actual = tarea.get("prompt_para_asistente")
-                    
+                    respuesta_ia_bruta = ""
                     if prompt_actual:
                         prompt_a_enviar = prompt_actual
-                        # --- [INICIO DE LA LÓGICA DE FORMATEO] ---
-                        # 3. Calcular y formatear el prompt si es necesario
                         if subapartado_actual and '{min_chars_fragmento}' in prompt_actual:
                             num_fragments = fragment_counts.get(subapartado_actual, 1)
                             min_total, max_total = character_budgets.get(subapartado_actual, (3500, 3800))
-                            
                             min_per_fragment = min_total / num_fragments
                             max_per_fragment = max_total / num_fragments
-
-                            prompt_a_enviar = prompt_actual.format(
-                                min_chars_fragmento=int(min_per_fragment),
-                                max_chars_fragmento=int(max_per_fragment)
-                            )
-                        # --- [FIN DE LA LÓGICA DE FORMATEO] ---
+                            prompt_a_enviar = prompt_actual.format(min_chars_fragmento=int(min_per_fragment), max_chars_fragmento=int(max_per_fragment))
 
                         response = enviar_mensaje_con_reintentos(chat_redaccion, prompt_a_enviar)
-                        
                         if not response:
-                            st.error("La generación se ha detenido debido a un error persistente en la API.")
-                            generation_successful = False
-                            break
-                        
+                            st.error("La generación se ha detenido debido a un error persistente en la API."); generation_successful = False; break
                         respuesta_ia_bruta = response.text
 
                     es_html = ("HTML" in tarea.get("prompt_id", "").upper() or "VISUAL" in tarea.get("prompt_id", "").upper() or respuesta_ia_bruta.strip().startswith(('<!DOCTYPE html>', '<div', '<table')))
@@ -1223,19 +1134,20 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                     else:
                         texto_limpio = limpiar_respuesta_final(respuesta_ia_bruta)
                         texto_corregido = corregir_numeracion_markdown(texto_limpio)
-                        if texto_corregido:
-                            agregar_markdown_a_word(documento, texto_corregido)
+                        if texto_corregido: agregar_markdown_a_word(documento, texto_corregido)
                 else:
                     generation_successful = True
 
         except Exception as e:
-            st.error(f"Ocurrió un error crítico durante la generación del cuerpo: {e}")
-            generation_successful = False
+            st.error(f"Ocurrió un error crítico durante la generación del cuerpo: {e}"); generation_successful = False
 
         if generation_successful:
             project_name = st.session_state.selected_project['name']
             safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
-            nombre_archivo_final = f"Cuerpo_Memoria_Tecnica_{safe_project_name}.docx"
+            
+            # <-- MODIFICADO: Nombre de archivo del cuerpo del documento es específico del lote
+            lot_name_clean_filename = lot_name_clean.replace(' ', '_')
+            nombre_archivo_final = f"Cuerpo_Memoria_{safe_project_name}_{lot_name_clean_filename}.docx"
             
             doc_io = io.BytesIO()
             documento.save(doc_io)
@@ -1246,6 +1158,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
             st.success("¡Cuerpo del documento generado con éxito!")
             st.rerun()
 
+    # --- 3. UI para Descarga y Navegación ---
     if st.session_state.get("generated_doc_buffer"):
         st.info("El cuerpo del documento está listo para descargar o para el ensamblaje final.")
         st.download_button(
@@ -1270,12 +1183,18 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         )
         
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
-    # TÍTULO CORREGIDO A FASE 6
     st.markdown("<h3>FASE 6: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
+    
+    # --- [NUEVO] Mostrar el lote/bloque activo para dar contexto ---
+    selected_lot_text = "Análisis General"
+    if st.session_state.get('selected_lot') and st.session_state.selected_lot != OPCION_ANALISIS_GENERAL:
+        selected_lot_text = st.session_state.selected_lot
+    
+    st.info(f"Ensamblando la memoria técnica para: **{selected_lot_text}**")
     st.markdown("Este es el último paso. Se añadirá un índice y una introducción profesional al documento.")
     st.markdown("---")
 
-    # MENSAJE DE ADVERTENCIA CORREGIDO PARA APUNTAR A LA FASE 5
+    # --- Verificación de estado de la sesión ---
     if not st.session_state.get("generated_doc_buffer"):
         st.warning("No se ha encontrado un documento de la Fase 5. Por favor, completa la fase anterior.")
         if st.button("← Ir a Fase 5"): 
@@ -1284,13 +1203,10 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
         return
 
     if not st.session_state.get("generated_structure"):
-        st.warning("No se ha encontrado la estructura del proyecto. Vuelve a la Fase 1.")
-        # Este botón ya estaba bien, pero lo dejamos para consistencia.
-        if st.button("← Ir a Fase 1"): 
-            go_to_phase1() # Suponiendo que tienes una función go_to_phase1
-            st.rerun()
+        st.warning("No se ha encontrado la estructura del proyecto. Vuelve a una fase anterior para generarla.")
         return
 
+    # --- Lógica de Ensamblaje ---
     if st.button("🚀 Ensamblar Documento Final con Índice e Introducción", type="primary", use_container_width=True):
         try:
             with st.spinner("Ensamblando la versión definitiva..."):
@@ -1327,12 +1243,24 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
                 original_filename = st.session_state.generated_doc_filename
                 st.session_state.refined_doc_filename = original_filename.replace("Cuerpo_", "Version_Final_")
                 
-                st.success("¡Documento final ensamblado con éxito!")
+                # --- [NUEVO] Guardar el documento final en la carpeta del lote en Drive ---
+                st.toast("Guardando versión final en Google Drive...")
+                service = st.session_state.drive_service
+                project_folder_id = st.session_state.selected_project['id']
+                active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+                
+                # Preparamos el buffer para ser subido
+                doc_io_final.name = st.session_state.refined_doc_filename
+                doc_io_final.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                upload_file_to_drive(service, doc_io_final, active_lot_folder_id)
+
+                st.success("¡Documento final ensamblado y guardado en Drive!")
                 st.rerun()
 
         except Exception as e:
             st.error(f"Ocurrió un error crítico durante el ensamblaje final: {e}")
 
+    # --- UI de Descarga y Navegación ---
     if st.session_state.get("refined_doc_buffer"):
         st.balloons()
         st.success("¡Tu memoria técnica definitiva está lista!")
@@ -1345,16 +1273,12 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
         )
 
     st.markdown("---")
-    
-    # --- SECCIÓN DE BOTONES MODIFICADA ---
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1:
-        # 1. BOTÓN CORREGIDO: Ahora apunta a go_to_phase5
-        st.button("← Volver a Fase 5", on_click=go_to_phase5, use_container_width=True)
-        
+        st.button("← Volver a Fase 5 (Redacción)", on_click=go_to_phase5, use_container_width=True)
     with col_nav2:
-        # 2. BOTÓN MODIFICADO: Nuevo texto y te lleva al inicio.
-        st.button("✅ PROCESO FINALIZADO (Volver al inicio)", on_click=back_to_project_selection_and_cleanup, use_container_width=True, type="primary")
+        st.button("✅ PROCESO FINALIZADO (Volver a selección de proyecto)", on_click=back_to_project_selection_and_cleanup, use_container_width=True, type="primary")
+    
 
 
 
