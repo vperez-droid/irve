@@ -24,7 +24,7 @@ from drive_utils import (
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
     wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
-    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, generar_indice_word, 
+    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, get_lot_index_info, generar_indice_word, 
     get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, 
     convertir_excel_a_texto_csv
 )
