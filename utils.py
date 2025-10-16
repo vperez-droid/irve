@@ -19,7 +19,11 @@ CARACTERES_POR_PAGINA_MIN = 3500
 CARACTERES_POR_PAGINA_MAX = 3800
 
 
-CONTEXTO_LOTE_TEMPLATE = "\n\n**INSTRUCCIÓN CRÍTICA DE ANÁLIS... # (la línea completa)
+CONTEXTO_LOTE_TEMPLATE = """
+
+**INSTRUCCIÓN CRÍTICA DE ANÁLIS:** Tu análisis debe centrarse única y exclusivamente en la información relacionada con el **'{lote_seleccionado}'**. Ignora por completo cualquier dato, requisito o criterio de valoración que pertenezca a otros lotes.
+
+"""
 OPCION_ANALISIS_GENERAL = "Análisis general (no centrarse en un lote)"
 
 def get_lot_context():
