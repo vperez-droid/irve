@@ -154,7 +154,7 @@ ESTÁ TERMINANTEMENTE PROHIBIDO USAR 'Title Case' (Poner en Mayúscula Cada Pala
 }}
 
 # ANÁLISIS A REALIZAR
-- **titulo_memoria**: Genera un título descriptivo.
+- **titulo_memoria**: Genera un título descriptivo y conciso para la propuesta. **APLICA OBLIGATORIAMENTE EL ESTILO 'Sentence case'**: solo la primera palabra y los nombres propios pueden ir en mayúscula. Por ejemplo: "Propuesta técnica para el lote 2: servicio de limpieza".
 - **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato. Si no encuentras la información, usa el valor "N/D". NO OMITAS LA CLAVE.
 - **estructura_memoria**: Crea un índice detallado y lógico.
 - **matices_desarrollo**: Proporciona indicaciones claras para cada subapartado.
