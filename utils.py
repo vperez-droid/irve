@@ -9,9 +9,12 @@ import docx
 import imgkit
 from pypdf import PdfReader
 import pandas as pd
-import time # <--- Falta importar 'time' para time.sleep(delay)
-import google.api_core.exceptions # <--- Falta importar el módulo para manejar la excepción
+import time
+import google.api_core.exceptions
+
+# <-- ¡CORRECCIÓN AQUÍ! AÑADIMOS LA IMPORTACIÓN DE LAS FUNCIONES DE DRIVE
 from drive_utils import find_or_create_folder, get_or_create_lot_folder_id
+
 # =============================================================================
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
 # =============================================================================
@@ -59,6 +62,8 @@ def get_lot_index_info(service, project_folder_id, selected_lot):
         index_filename = f"ultimo_indice_lote{lot_suffix}.json"
 
     return target_folder_id, index_filename
+
+# ... (el resto del archivo es exactamente el mismo que proporcionaste) ...
 def get_lot_context():
     """Genera el texto de contexto para la IA si hay un lote seleccionado."""
     lote_seleccionado = st.session_state.get('selected_lot')
@@ -349,4 +354,3 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
     except Exception as e:
         st.error(f"Error al convertir HTML a imagen: {e}")
         return None
-
