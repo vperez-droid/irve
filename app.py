@@ -1,4 +1,4 @@
-# app.py (VERSIÓN COMPLETA Y MODIFICADA)
+# app.py (VERSIÓN FINAL CORREGIDA)
 # -----------------------------------------------------------------------------
 # Este es el punto de entrada principal de la aplicación Streamlit.
 # Actúa como el "director de orquesta": gestiona la autenticación, el estado
@@ -28,11 +28,15 @@ from ui_pages import (
     phase_5_page,
     phase_6_page
 )
-# [MODIFICADO] Se añade la importación del nuevo prompt
 from prompts import PROMPT_PLIEGOS, PROMPT_DETECTAR_LOTES
 
-# Se importa la función para convertir Excel.
-from utils import limpiar_respuesta_json, convertir_excel_a_texto_csv
+# [MODIFICADO] Se importan las nuevas funciones de lotes desde utils.py
+from utils import (
+    limpiar_respuesta_json, 
+    convertir_excel_a_texto_csv, 
+    get_lot_context, 
+    OPCION_ANALISIS_GENERAL
+)
 
 from drive_utils import find_or_create_folder, get_files_in_project, download_file_from_drive
 
@@ -48,7 +52,7 @@ if 'credentials' not in st.session_state: st.session_state.credentials = None
 if 'drive_service' not in st.session_state: st.session_state.drive_service = None
 if 'selected_project' not in st.session_state: st.session_state.selected_project = None
 
-# [NUEVO] Estados para la gestión de lotes
+# Estados para la gestión de lotes
 if 'detected_lotes' not in st.session_state: st.session_state.detected_lotes = None
 if 'selected_lot' not in st.session_state: st.session_state.selected_lot = None
 
@@ -76,7 +80,6 @@ def go_to_phase6(): st.session_state.page = 'phase_6_ensamblaje'
 # --- Función de Limpieza ---
 def back_to_project_selection_and_cleanup():
     """Limpia el estado de la sesión relacionado con un proyecto específico."""
-    # [MODIFICADO] Se añaden los nuevos estados de lotes a la limpieza
     keys_to_clear = [
         'requisitos_extraidos', 'generated_structure', 'uploaded_pliegos', 
         'selected_project', 'generated_doc_buffer', 'refined_doc_buffer', 
@@ -92,21 +95,11 @@ def back_to_project_selection_and_cleanup():
 #           LÓGICA CENTRAL DE LA APLICACIÓN (NO-UI)
 # =============================================================================
 
-# [NUEVO] Función de contexto de lote y constantes asociadas
-CONTEXTO_LOTE_TEMPLATE = "\n\n**INSTRUCCIÓN CRÍTICA DE ANÁLISIS:** Tu análisis debe centrarse única y exclusivamente en la información relacionada con el **'{lote_seleccionado}'**. Ignora por completo cualquier dato, requisito o criterio de valoración que pertenezca a otros lotes.\n\n"
-OPCION_ANALISIS_GENERAL = "Análisis general (no centrarse en un lote)"
-
-def get_lot_context():
-    """Genera el texto de contexto para la IA si hay un lote seleccionado."""
-    lote_seleccionado = st.session_state.get('selected_lot')
-    if lote_seleccionado and lote_seleccionado != OPCION_ANALISIS_GENERAL:
-        return CONTEXTO_LOTE_TEMPLATE.format(lote_seleccionado=lote_seleccionado)
-    return ""
+# [ELIMINADO] La función get_lot_context() y sus constantes se han movido a utils.py
 
 def handle_full_regeneration(model):
     """
     Función que genera un índice desde cero analizando los archivos de 'Pliegos'.
-    Esta versión está corregida para manejar XLSX, DOCX y PDF correctamente.
     """
     if not st.session_state.get('drive_service') or not st.session_state.get('selected_project'):
         st.error("Error de sesión. No se puede iniciar la regeneración."); return False
@@ -124,7 +117,7 @@ def handle_full_regeneration(model):
 
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
             
-            # [MODIFICADO] Se añade el contexto del lote al formatear el prompt
+            # [MODIFICADO] Se usa la función importada desde utils.py
             contexto_lote = get_lot_context()
             prompt_con_idioma = PROMPT_PLIEGOS.format(idioma=idioma_seleccionado, contexto_lote=contexto_lote)
             
@@ -197,7 +190,7 @@ else:
         
         if 'gemini_model' not in st.session_state:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-            st.session_state.gemini_model = genai.GenerativeModel('models/gemini-1.5-flash') # Modelo actualizado
+            st.session_state.gemini_model = genai.GenerativeModel('models/gemini-2.5-flash')
 
         model = st.session_state.gemini_model
 
@@ -211,24 +204,21 @@ else:
         go_to_project_selection()
         st.rerun()
 
-    # --- [MODIFICADO] BARRA LATERAL CON INFORMACIÓN DEL LOTE ---
-    # Se muestra en todas las páginas una vez que se ha cargado un proyecto.
+    # Barra lateral
     if st.session_state.get('selected_project') and st.session_state.page != 'project_selection':
         with st.sidebar:
             st.header(f"Proyecto Activo")
             st.info(st.session_state.selected_project['name'])
             
-            # [NUEVO] Mostrar el lote activo si existe y no es la opción general
+            # Mostrar el lote activo si existe y no es la opción general
             if st.session_state.get('selected_lot') and st.session_state.selected_lot != OPCION_ANALISIS_GENERAL:
                 st.success(f"Lote activo: {st.session_state.selected_lot}")
 
             st.markdown("---")
             
-            # Inicializa el idioma si no existe, para evitar errores
             if 'project_language' not in st.session_state:
                 st.session_state.project_language = 'Español'
             
-            # Selector de idioma persistente que guarda su estado
             st.selectbox(
                 "Idioma del Proyecto:",
                 ('Español', 'Inglés', 'Catalán', 'Gallego', 'Francés', 'Euskera'),
@@ -239,7 +229,6 @@ else:
             if st.button("↩️ Volver a Selección de Proyecto", use_container_width=True):
                 back_to_project_selection_and_cleanup()
                 st.rerun()
-    # --- [FIN DEL CÓDIGO MODIFICADO] ---
 
     # Router: Llama a la función de la página actual según el estado.
     page = st.session_state.page
