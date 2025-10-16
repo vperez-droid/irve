@@ -458,12 +458,10 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
         # --- [INICIO CÓDIGO CORREGIDO] ---
         if config or plan:
             # Mostrar métricas clave de configuración en columnas
-            col1, col2, col3 = st.columns(3)
+            col1, col2 = st.columns(2)
             with col1:
                 st.metric("Páginas Máximas", config.get('max_paginas', 'N/D'))
             with col2:
-                st.metric("Exclusiones Paginado", config.get('exclusiones_paginado', 'N/D'))
-            with col3:
                 st.metric("Reglas de Formato", config.get('reglas_formato', 'N/D'))
 
             st.markdown("---")
