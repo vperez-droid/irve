@@ -18,8 +18,17 @@ import google.api_core.exceptions # <--- Falta importar el módulo para manejar 
 CARACTERES_POR_PAGINA_MIN = 3500
 CARACTERES_POR_PAGINA_MAX = 3800
 
-# --- NUEVA FUNCIÓN MÁS ROBUSTA ---
 
+CONTEXTO_LOTE_TEMPLATE = "\n\n**INSTRUCCIÓN CRÍTICA DE ANÁLIS... # (la línea completa)
+OPCION_ANALISIS_GENERAL = "Análisis general (no centrarse en un lote)"
+
+def get_lot_context():
+    """Genera el texto de contexto para la IA si hay un lote seleccionado."""
+    lote_seleccionado = st.session_state.get('selected_lot')
+    if lote_seleccionado and lote_seleccionado != OPCION_ANALISIS_GENERAL:
+        return CONTEXTO_LOTE_TEMPLATE.format(lote_seleccionado=lote_seleccionado)
+    return ""
+    
 def enviar_mensaje_con_reintentos(chat, prompt_a_enviar, reintentos=5, delay=60):
     """
     Envía un mensaje a un chat de Gemini, con una lógica de reintentos para errores comunes.
