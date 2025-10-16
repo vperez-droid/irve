@@ -3,8 +3,10 @@ import re
 import time
 import streamlit as st
 import httplib2
+import docx  # <--- NUEVO: Añadido para leer archivos de Word
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaIoBaseUpload, MediaIoBaseDownload
+from utils import OPCION_ANALISIS_GENERAL # <--- NUEVO: Para manejar el caso de análisis general
 
 # Constante para el nombre de la carpeta raíz de la aplicación en Drive
 ROOT_FOLDER_NAME = "ProyectosLicitaciones"
@@ -149,6 +151,10 @@ def sync_guiones_folders_with_index(service, project_folder_id, new_index_struct
     Compara las carpetas de guiones existentes en Drive con el nuevo índice.
     Elimina las carpetas que ya no corresponden a ningún subapartado.
     """
+    # NOTA: Esta función necesitará ser adaptada en el siguiente paso para que
+    # apunte a la carpeta del lote activo, no directamente a 'project_folder_id'.
+    # Por ahora, se mantiene como está para no romper la Fase 2 actual.
+    
     st.toast("🔄 Sincronizando carpetas de guiones con el nuevo índice...")
     expected_folders = set()
     if 'estructura_memoria' in new_index_structure:
@@ -183,3 +189,79 @@ def sync_guiones_folders_with_index(service, project_folder_id, new_index_struct
                 st.warning(f"No se pudo eliminar la carpeta obsoleta: '{folder_name}'")
     
     return deleted_count
+
+# =============================================================================
+#           NUEVAS FUNCIONES PARA GESTIÓN DE LOTES Y CONTEXTO
+# =============================================================================
+
+def clean_folder_name(name):
+    """Limpia un string para que sea un nombre de carpeta válido en Drive."""
+    if name == OPCION_ANALISIS_GENERAL:
+        return "Analisis_General"
+    return re.sub(r'[\\/*?:"<>|]', "", name).strip()
+
+def get_or_create_lot_folder_id(service, project_folder_id):
+    """
+    Obtiene el ID de la carpeta para el lote/bloque actualmente seleccionado en la sesión.
+    Si no existe, la crea. Maneja el caso de "Análisis General".
+    """
+    selected_lot = st.session_state.get('selected_lot')
+    if not selected_lot:
+        st.error("Error crítico: No se ha seleccionado ningún lote en la sesión.")
+        return None
+
+    # Usamos la función de limpieza para obtener un nombre de carpeta consistente
+    lot_folder_name = clean_folder_name(selected_lot)
+
+    # Busca o crea esta carpeta directamente dentro de la carpeta del proyecto
+    lot_folder_id = find_or_create_folder(service, lot_folder_name, parent_id=project_folder_id)
+    return lot_folder_id
+
+def get_text_from_docx(file_bytes):
+    """Extrae el texto de un objeto de bytes de un archivo .docx."""
+    try:
+        # file_bytes es el objeto BytesIO devuelto por download_file_from_drive
+        doc = docx.Document(io.BytesIO(file_bytes.getvalue()))
+        return "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+    except Exception as e:
+        st.warning(f"No se pudo leer un archivo .docx para el contexto: {e}")
+        return ""
+
+def get_context_from_lots(service, project_folder_id, context_lot_names):
+    """
+    Recopila todo el texto de los guiones generados para una lista de lotes
+    y lo formatea como un string de contexto para la IA.
+    """
+    if not context_lot_names:
+        return ""
+
+    final_context_str = "\n\n--- INICIO DEL CONTEXTO DE LOTES RELACIONADOS ---\n"
+    
+    with st.spinner(f"Cargando contexto desde {len(context_lot_names)} lote(s)..."):
+        # Obtiene un mapa de todos los subdirectorios del proyecto (que ahora son los lotes)
+        all_project_folders = list_project_folders(service, project_folder_id)
+        
+        for lot_name in context_lot_names:
+            # Busca la carpeta del lote por su nombre limpio
+            clean_name = clean_folder_name(lot_name)
+            if clean_name in all_project_folders:
+                lot_folder_id = all_project_folders[clean_name]
+                # Busca la carpeta 'Guiones de Subapartados' DENTRO de la carpeta del lote
+                guiones_folder_id = find_file_by_name(service, "Guiones de Subapartados", lot_folder_id)
+                
+                if guiones_folder_id:
+                    final_context_str += f"\n--- Contenido del '{lot_name}' ---\n"
+                    # Lista las carpetas de cada subapartado dentro de la carpeta de guiones
+                    subapartado_folders = list_project_folders(service, guiones_folder_id)
+                    
+                    for sub_name, sub_id in subapartado_folders.items():
+                        guion_files = get_files_in_project(service, sub_id)
+                        # Busca el archivo .docx del guion
+                        docx_file = next((f for f in guion_files if f['name'].endswith('.docx')), None)
+                        if docx_file:
+                            file_bytes = download_file_from_drive(service, docx_file['id'])
+                            texto = get_text_from_docx(file_bytes)
+                            final_context_str += f"\n**Subapartado: {sub_name}**\n{texto}\n"
+    
+    final_context_str += "\n--- FIN DEL CONTEXTO DE LOTES RELACIONADOS ---\n"
+    return final_context_str
