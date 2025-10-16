@@ -171,6 +171,13 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             st.session_state.selected_lot = OPCION_ANALISIS_GENERAL
     else:
         st.success("¡Se han detectado lotes en la documentación!")
+        
+        # --- [INICIO DE LA CORRECCIÓN] ---
+        # Si no hay ningún lote seleccionado todavía, seleccionamos el primero de la lista por defecto.
+        if st.session_state.get('selected_lot') is None and st.session_state.detected_lotes:
+            st.session_state.selected_lot = st.session_state.detected_lotes[0]
+        # --- [FIN DE LA CORRECCIÓN] ---
+
         opciones_lotes = st.session_state.detected_lotes + [OPCION_ANALISIS_GENERAL]
         current_selection = st.session_state.get('selected_lot')
         try:
@@ -196,7 +203,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         else:
              st.info("Se generará un análisis de viabilidad general.")
 
-        # <-- MODIFICADO: La carpeta para guardar el análisis ahora depende del lote
         active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
         docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
         if 'analysis_doc_id' not in st.session_state:
