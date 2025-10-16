@@ -108,6 +108,9 @@ El idioma principal para la memoria es: {idioma}.
 # REGLAS ESTRATÉGICAS DE GENERACIÓN
 1.  **PONDERACIÓN POR PUNTUACIÓN (REGLA DEL CLIENTE - ¡CRÍTICA!):** Al distribuir las páginas en `plan_extension`, DEBES hacerlo de forma proporcional a la puntuación de cada apartado. **Los apartados con más puntos DEBEN tener asignadas más páginas.** Si un apartado vale 20 puntos y otro 5, el primero debe tener significativamente más páginas. Si no se especifica puntuación, distribuye el resto de páginas de forma lógica.
 2.  **CONSISTENCIA:** La suma de `paginas_sugeridas_apartado` debe ser coherente con el `max_paginas` detectado. La suma de `paginas_sugeridas` dentro de `desglose_subapartados` debe ser igual al total del apartado.
+**3.  ESTILO DE TÍTULOS (REGLA DE ESTILO CRÍTICA): Al generar los textos para las claves "apartado" y "subapartados" en la `estructura_memoria`, DEBES usar 'Sentence case'. Esto significa que solo la primera palabra y los nombres propios (como 'Galicia', 'ISO 9001') deben ir en mayúscula.
+    -   Ejemplo INCORRECTO: "4.1. Modelo de Gestión de Calidad"
+    -   Ejemplo CORRECTO: "4.1. Modelo de gestión de calidad"**
 
 # EJEMPLO DE LA ESTRUCTURA JSON REQUERIDA
 {{
