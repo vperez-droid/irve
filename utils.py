@@ -11,6 +11,7 @@ from pypdf import PdfReader
 import pandas as pd
 import time # <--- Falta importar 'time' para time.sleep(delay)
 import google.api_core.exceptions # <--- Falta importar el módulo para manejar la excepción
+from drive_utils import find_or_create_folder, get_or_create_lot_folder_id
 # =============================================================================
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
 # =============================================================================
