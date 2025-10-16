@@ -805,31 +805,40 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
     # --- 1. Inicialización y Verificación de Sesión ---
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
+    
+    # --- [CORRECCIÓN 1: Obtener el lote seleccionado de la sesión] ---
+    selected_lot = st.session_state.get('selected_lot')
 
-    # --- [NUEVO] Obtención de la Carpeta del Lote Activo ---
-    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+    # --- [CORRECCIÓN 1: Pasar el nombre del lote como TERCER argumento a la función] ---
+    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot)
+    
     if not active_lot_folder_id:
         st.warning("No se puede continuar sin un lote seleccionado. Vuelve a la Fase 1."); return
 
-    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
+    # --- 2. Carga del Índice Maestro (Corregido para cargar el del lote) ---
+    # --- [CORRECCIÓN 2: Lógica de carga del índice específico del lote] ---
+    index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
 
-    # --- 2. Carga del Índice Maestro ---
-    if 'generated_structure' not in st.session_state or not st.session_state.generated_structure:
-        st.info("Sincronizando índice desde Google Drive...")
-        saved_index_id = find_file_by_name(service, "ultimo_indice.json", docs_app_folder_id)
-        if saved_index_id:
-            index_content_bytes = download_file_from_drive(service, saved_index_id)
-            st.session_state.generated_structure = json.loads(index_content_bytes.getvalue().decode('utf-8'))
-            st.rerun()
-        else:
-            st.warning("No se ha encontrado un índice. Vuelve a Fase 2 para generarlo.")
-            if st.button("← Ir a Fase 2"): 
-                # Asumiendo que go_to_phase2_results está disponible desde app.py
-                go_to_phase2_results()
+    if 'generated_structure' not in st.session_state:
+        st.info(f"Sincronizando índice ('{index_filename}') desde Google Drive...")
+        try:
+            saved_index_id = find_file_by_name(service, index_filename, index_folder_id)
+            if saved_index_id:
+                index_content_bytes = download_file_from_drive(service, saved_index_id)
+                st.session_state.generated_structure = json.loads(index_content_bytes.getvalue().decode('utf-8'))
                 st.rerun()
+            else:
+                st.warning(f"No se ha encontrado un índice guardado ('{index_filename}') para este lote. Vuelve a Fase 2 para generarlo.")
+                if st.button("← Ir a Fase 2"):
+                    go_to_phase2_results()
+                    st.rerun()
+                return
+        except Exception as e:
+            st.error(f"Error al cargar el índice desde Drive: {e}")
             return
 
     # --- 3. Preparación de datos para la UI ---
+    # (El resto del código de esta sección no necesita cambios)
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
@@ -854,6 +863,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
     if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
+    # (El resto de la función no necesita cambios y ya usa 'active_lot_folder_id' correctamente)
     def handle_individual_generation(matiz_info, callback_model, show_toast=True):
         apartado_titulo = matiz_info.get("apartado", "N/A")
         subapartado_titulo = matiz_info.get("subapartado", "N/A")
@@ -950,22 +960,25 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 if not plan_conjunto_final["plan_de_prompts"]:
                     st.warning("No se encontraron planes individuales para unificar. Genera al menos uno."); return
                 
+                # [MODIFICADO] La carpeta 'docs_app_folder_id' ahora debe estar dentro del lote
+                lot_docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
                 lot_name_clean = clean_folder_name(st.session_state.selected_lot)
                 nombre_archivo_final = f"plan_de_prompts_{lot_name_clean}.json"
                 
                 json_bytes_finales = json.dumps(plan_conjunto_final, indent=2, ensure_ascii=False).encode('utf-8')
                 mock_file_obj = io.BytesIO(json_bytes_finales); mock_file_obj.name = nombre_archivo_final; mock_file_obj.type = "application/json"
                 
-                old_conjunto_id = find_file_by_name(service, nombre_archivo_final, docs_app_folder_id)
+                old_conjunto_id = find_file_by_name(service, nombre_archivo_final, lot_docs_app_folder_id)
                 if old_conjunto_id: delete_file_from_drive(service, old_conjunto_id)
                 
-                upload_file_to_drive(service, mock_file_obj, docs_app_folder_id)
+                upload_file_to_drive(service, mock_file_obj, lot_docs_app_folder_id)
                 st.success(f"¡Plan conjunto para '{st.session_state.selected_lot}' generado! Se unificaron {len(plan_conjunto_final['plan_de_prompts'])} prompts.")
                 st.balloons()
             except Exception as e:
                 st.error(f"Ocurrió un error durante la unificación: {e}")
 
     # --- 5. Renderizado de la Interfaz de Usuario ---
+    # (El resto del código no necesita cambios)
     with st.spinner("Verificando estado de los planes de prompts..."):
         guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         carpetas_de_guiones = list_project_folders(service, guiones_main_folder_id)
@@ -1043,12 +1056,15 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                     st.button("🗑️ Borrar Plan", key=f"del_plan_{i}", on_click=handle_individual_deletion, args=(subapartado_titulo, plan_individual_id), use_container_width=True)
 
     st.markdown("---")
+    # [MODIFICADO] La carpeta 'docs_app_folder_id' ahora debe estar dentro del lote
+    lot_docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
     st.button("🚀 Unificar y Guardar Plan de Prompts para este Lote", on_click=handle_conjunto_generation, use_container_width=True, type="primary")
     col_nav3_1, col_nav3_2 = st.columns(2)
     with col_nav3_1:
         st.button("← Volver al Centro de Mando (F3)", on_click=go_to_phase3, use_container_width=True)
     with col_nav3_2:
         st.button("Ir a Redacción Final (F5) →", on_click=go_to_phase5, use_container_width=True)
+        
 # =============================================================================
 #           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
 # =============================================================================
