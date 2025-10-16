@@ -364,7 +364,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
     st.markdown("Revisa el índice, la guía de redacción y el plan estratégico. Puedes hacer ajustes con feedback, regenerarlo todo desde cero, o aceptarlo para continuar.")
     st.markdown("---")
     
-    # --- [NUEVO] Mostrar el lote/bloque activo para dar contexto ---
+    # --- Mostrar el lote/bloque activo para dar contexto ---
     selected_lot = st.session_state.get('selected_lot')
     if selected_lot:
         if selected_lot == OPCION_ANALISIS_GENERAL:
@@ -443,7 +443,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
             except Exception as e:
                 st.error(f"Ocurrió un error crítico durante la regeneración: {e}")
 
-    # --- El resto de la UI de la página (sin cambios) ---
+    # --- UI de la página ---
     with st.container(border=True):
         st.subheader("Índice Propuesto y Guía de Redacción")
         estructura = st.session_state.generated_structure.get('estructura_memoria')
@@ -454,7 +454,42 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
         st.subheader("📊 Plan Estratégico del Documento")
         config = st.session_state.generated_structure.get('configuracion_licitacion', {})
         plan = st.session_state.generated_structure.get('plan_extension', [])
-        # ... (Aquí va tu código para mostrar las métricas y el DataFrame, no necesita cambios)
+        
+        # --- [INICIO CÓDIGO CORREGIDO] ---
+        if config or plan:
+            # Mostrar métricas clave de configuración en columnas
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Páginas Máximas", config.get('max_paginas', 'N/D'))
+            with col2:
+                st.metric("Exclusiones Paginado", config.get('exclusiones_paginado', 'N/D'))
+            with col3:
+                st.metric("Reglas de Formato", config.get('reglas_formato', 'N/D'))
+
+            st.markdown("---")
+            
+            # Mostrar el plan de extensión como una tabla si existe
+            if plan:
+                try:
+                    # Preparamos los datos para que se vean bien en la tabla
+                    plan_data = []
+                    for item in plan:
+                        plan_data.append({
+                            'Apartado': item.get('apartado', 'Sin Título'),
+                            'Páginas Sugeridas': item.get('paginas_sugeridas_apartado', 'N/D'),
+                            'Puntuación': item.get('puntuacion_sugerida', 'N/D')
+                        })
+                    
+                    df = pd.DataFrame(plan_data)
+                    st.write("Distribución de Contenido y Puntuación:")
+                    st.dataframe(df, use_container_width=True)
+                except Exception as e:
+                    st.error(f"No se pudo mostrar el plan de extensión. Error: {e}")
+            else:
+                st.info("No se encontró un 'plan_extension' en la estructura generada.")
+        else:
+            st.warning("No se encontraron datos de 'configuracion_licitacion' o 'plan_extension' en la estructura generada por la IA.")
+        # --- [FIN CÓDIGO CORREGIDO] ---
 
     st.markdown("---")
     st.subheader("Validación y Siguiente Paso")
@@ -476,9 +511,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
             try:
                 service = st.session_state.drive_service
                 project_folder_id = st.session_state.selected_project['id']
-                
-                # <-- ¡CAMBIO IMPORTANTE! La llamada a sync_guiones_folders_with_index se ha ELIMINADO de aquí.
-                # Se moverá a la Fase 3, donde ya conocemos el lote activo.
                 
                 docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
                 json_bytes = json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False).encode('utf-8')
