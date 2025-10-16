@@ -1068,6 +1068,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
 # =============================================================================
 #           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
 # =============================================================================
+# En ui_pages.py
 
 def phase_5_page(model, go_to_phase4, go_to_phase6):
     st.markdown("<h3>FASE 5: Redacción del Cuerpo del Documento</h3>", unsafe_allow_html=True)
@@ -1078,18 +1079,24 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
 
-    # --- [INICIO DE LA CORRECCIÓN] ---
-    # Se ha modificado esta sección para buscar el plan en la carpeta correcta.
-    
-    # 1. Primero, obtenemos la carpeta del lote/bloque que está activo.
-    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+    # --- [INICIO DE LA CORRECCIÓN FINAL] ---
+    # Añadimos una comprobación de seguridad para asegurarnos de que 'selected_lot' existe.
+    selected_lot = st.session_state.get('selected_lot')
+    if not selected_lot:
+        st.warning("No se ha seleccionado un lote en la sesión. Por favor, vuelve a la Fase 1 para continuar.")
+        # Asumiendo que tienes una función go_to_phase1 disponible
+        # if st.button("← Volver a Fase 1"): go_to_phase1(); st.rerun()
+        return
 
-    # 2. LUEGO, buscamos la carpeta "Documentos aplicación" DENTRO de la carpeta del lote.
+    # 1. Obtenemos la carpeta del lote activo, PASANDO el nombre del lote como argumento.
+    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, selected_lot)
+
+    # 2. Buscamos la carpeta "Documentos aplicación" DENTRO de la carpeta del lote.
     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
-    # --- [FIN DE LA CORRECCIÓN] ---
+    # --- [FIN DE LA CORRECCIÓN FINAL] ---
 
-    # Carga del plan de prompts específico del lote (esta lógica ya era correcta)
-    lot_name_clean = clean_folder_name(st.session_state.get('selected_lot', ''))
+    # Carga del plan de prompts específico del lote
+    lot_name_clean = clean_folder_name(selected_lot)
     plan_filename = f"plan_de_prompts_{lot_name_clean}.json"
     plan_conjunto_id = find_file_by_name(service, plan_filename, docs_app_folder_id)
 
@@ -1106,12 +1113,12 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         lista_de_prompts = plan_de_accion.get("plan_de_prompts", [])
         if lista_de_prompts:
             lista_de_prompts.sort(key=lambda x: natural_sort_key(x.get('subapartado_referencia', '')))
-        st.success(f"✔️ Plan de acción para '{st.session_state.selected_lot}' cargado. Se ejecutarán {len(lista_de_prompts)} prompts.")
+        st.success(f"✔️ Plan de acción para '{selected_lot}' cargado. Se ejecutarán {len(lista_de_prompts)} prompts.")
     except Exception as e:
         st.error(f"Error al cargar o procesar el plan de acción: {e}")
         return
 
-    # --- 2. Lógica de Generación del Documento ---
+    # --- 2. Lógica de Generación del Documento (Sin cambios aquí) ---
     button_text = "🔁 Volver a Generar Cuerpo del Documento" if st.session_state.get("generated_doc_buffer") else "🚀 Iniciar Redacción y Generar Cuerpo"
     
     if st.button(button_text, type="primary", use_container_width=True):
@@ -1236,6 +1243,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
             type="primary", 
             disabled=not st.session_state.get("generated_doc_buffer")
         )
+        
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
     st.markdown("<h3>FASE 6: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
     
