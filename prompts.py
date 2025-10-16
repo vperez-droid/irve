@@ -113,7 +113,6 @@ El idioma principal para la memoria es: {idioma}.
 Al generar los textos para las claves "apartado" y "subapartados", DEBES USAR OBLIGATORIAMENTE 'Sentence case'.
 ESTO SIGNIFICA QUE SOLO LA PRIMERA PALABRA Y LOS NOMBRES PROPIOS (ej: 'Galicia', 'ISO 9001') DEBEN IR EN MAYÚSCULA.
 ESTÁ TERMINANTEMENTE PROHIBIDO USAR 'Title Case' (Poner en Mayúscula Cada Palabra).
-OBSERVA EL EJEMPLO CORREGIDO ABAJO. TU SALIDA DEBE IMITAR ESTE ESTILO.
 
 # EJEMPLO DE LA ESTRUCTURA JSON REQUERIDA
 {{
@@ -126,17 +125,7 @@ OBSERVA EL EJEMPLO CORREGIDO ABAJO. TU SALIDA DEBE IMITAR ESTE ESTILO.
   "estructura_memoria": [
     {{
       "apartado": "1. Introducción y contexto",
-      "subapartados": [
-        "1.1. Objeto del proyecto",
-        "1.2. Entendimiento de las necesidades"
-      ]
-    }},
-    {{
-      "apartado": "2. Desarrollo detallado de los bloques de servicios",
-      "subapartados": [
-        "2.1. Metodología de trabajo propuesta",
-        "2.2. Plan de calidad y mejora del servicio"
-      ]
+      "subapartados": [ "1.1. Objeto del proyecto", "1.2. Entendimiento de las necesidades" ]
     }}
   ],
   "matices_desarrollo": [
@@ -158,12 +147,6 @@ OBSERVA EL EJEMPLO CORREGIDO ABAJO. TU SALIDA DEBE IMITAR ESTE ESTILO.
           "paginas_sugeridas": 8,
           "min_caracteres_sugeridos": 15000,
           "max_caracteres_sugeridos": 18000
-        }},
-        {{
-          "subapartado": "2.2. Metodología de trabajo",
-          "paginas_sugeridas": 5,
-          "min_caracteres_sugeridos": 7500,
-          "max_caracteres_sugeridos": 10500
         }}
       ]
     }}
@@ -171,15 +154,20 @@ OBSERVA EL EJEMPLO CORREGIDO ABAJO. TU SALIDA DEBE IMITAR ESTE ESTILO.
 }}
 
 # ANÁLISIS A REALIZAR
-- **titulo_memoria**: Genera un título descriptivo basado en el objeto de la licitación.
-- **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato.
-- **estructura_memoria**: Crea un índice detallado y lógico basado en los requisitos y criterios de evaluación, **siguiendo estrictamente la regla de estilo 'Sentence case' para todos los títulos**.
-- **matices_desarrollo**: Para cada subapartado, proporciona indicaciones claras sobre qué escribir.
-- **plan_extension**: Para cada apartado principal, realiza CUATRO tareas, SIGUIENDO LAS REGLAS ESTRATÉGICAS.
-    1.  Asigna un número total de páginas (`paginas_sugeridas_apartado`) **ponderando según la puntuación del apartado**.
-    2.  Busca y añade la puntuación para ese apartado (`puntuacion_sugerida`).
-    3.  Desglosa la asignación de páginas entre sus subapartados (`desglose_subapartados`).
-    4.  Para CADA subapartado, calcula y añade `min_caracteres_sugeridos` (`paginas_sugeridas` * 2100) y `max_caracteres_sugeridos` (`paginas_sugeridas` * 2100).
+- **titulo_memoria**: Genera un título descriptivo.
+- **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato. Si no encuentras la información, usa el valor "N/D". NO OMITAS LA CLAVE.
+- **estructura_memoria**: Crea un índice detallado y lógico.
+- **matices_desarrollo**: Proporciona indicaciones claras para cada subapartado.
+- **plan_extension**: Realiza el desglose de páginas y puntuación. Si no hay datos de puntuación, usa "N/D". NO OMITAS LA CLAVE.
+
+# VERIFICACIÓN FINAL OBLIGATORIA
+Antes de terminar tu respuesta, revisa que el JSON de salida contenga OBLIGATORIAMENTE TODAS las siguientes claves de nivel superior:
+1. `titulo_memoria`
+2. `configuracion_licitacion`
+3. `estructura_memoria`
+4. `matices_desarrollo`
+5. `plan_extension`
+Tu respuesta será considerada INVÁLIDA si falta alguna de estas claves.
 
 Ahora, analiza los documentos adjuntos y genera el objeto JSON completo, aplicando rigurosamente todas las reglas.
 """
