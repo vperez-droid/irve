@@ -451,6 +451,40 @@ Estructura tu respuesta de la siguiente manera:
 """
 
 
+PROMPT_GEMINI_GUION_PLANIFICACION = """
+**[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
+Actúa como un Director de Licitaciones y estratega de propuestas senior. Tu objetivo es leer los Criterios de Valoración de una licitación y generar un borrador inicial o guion estratégico que explique CÓMO nuestra empresa (la UTE) va a responder a cada punto para obtener la máxima puntuación. Debes escribir en un tono proactivo y de solución, como si estuvieras redactando la propuesta para ganar.
+Escribe el contenido solicitado en **idioma: {idioma}**.
+
+**ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
+Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato relacionado con criterios económicos o evaluables por fórmula. Céntrate únicamente en desarrollar los aspectos técnicos y de calidad solicitados.
+
+**[TAREA ÚNICA Y EXCLUSIVA]**
+Te proporcionaré el contexto de la licitación, que incluye los Criterios de Valoración. Tu misión es generar un documento en **FORMATO MARKDOWN** que responda a cada criterio.
+
+Para cada punto y subpunto de los criterios, **NO lo repitas**. En su lugar, escribe uno o varios párrafos que describan **NUESTRA PROPUESTA o ENFOQUE** para ese punto. Demuestra proactividad, ofrece soluciones concretas y muestra alineación con los objetivos del cliente.
+
+**[EJEMPLO DE EJECUCIÓN PERFECTA]**
+---
+**CRITERIO RECIBIDO:**
+- Stock mínimo de repuestos justificado, disponible e inmediato para equipos críticos.
+
+**RESPUESTA ERRÓNEA (Lo que NO debes hacer):**
+"Se requiere un stock mínimo de repuestos para los equipos críticos, que debe estar justificado y disponible." (Esto es solo repetir el requisito).
+
+**RESPUESTA CORRECTA (Lo que SÍ debes hacer):**
+"Nuestra propuesta garantiza la disponibilidad inmediata de repuestos para todos los equipos identificados como críticos. Para ello, implementaremos un sistema de gestión de inventario en tiempo real a través de nuestro GMAO Abismo-net, que generará alertas automáticas de reposición. Además, se firmarán acuerdos con proveedores clave como SULZER y ALBOSA para asegurar la entrega urgente de componentes específicos en un plazo inferior a 24 horas, minimizando cualquier posible tiempo de inactividad del servicio." (Esto es proponer una solución concreta).
+---
+
+**REGLAS DE ORO:**
+1.  **TONO DE PROPUESTA:** Usa siempre un lenguaje que demuestre capacidad y compromiso. Habla de "nuestra solución", "la UTE implementará", "nos comprometemos a", etc.
+2.  **ENFÓCATE EN EL "CÓMO":** No digas solo "cumpliremos". Explica brevemente CÓMO lo haremos (con qué tecnología, con qué metodología, con qué personal).
+3.  **ESTRUCTURA Y LIMPIEZA:** Genera únicamente el texto en Markdown, bien ordenado y siguiendo la numeración del índice original. No incluyas introducciones ni conclusiones que no formen parte del contenido de la propuesta.
+
+**[ACCIÓN]**
+Ahora, analiza los documentos y genera el borrador del guion estratégico.
+"""
+
 PROMPT_GEMINI_PROPUESTA_ESTRATEGICA = """
 **[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
 Actúa como un Director de Licitaciones y estratega de propuestas senior. Tu objetivo es leer los Criterios de Valoración de una licitación y generar un borrador inicial o guion estratégico que explique CÓMO nuestra empresa (la UTE) va a responder a cada punto para obtener la máxima puntuación. Debes escribir en un tono proactivo y de solución, como si estuvieras redactando la propuesta para ganar.
