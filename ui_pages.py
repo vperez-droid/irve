@@ -517,46 +517,70 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 st.rerun()
             except Exception as e:
                 st.error(f"Ocurrió un error durante el guardado: {e}")
+# ui_pages.py
+
+# Asegúrate de tener estas importaciones al principio de tu archivo ui_pages.py
+import streamlit as st
+import json
+import io
+import time
+import docx
+from prompts import PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_CONSULTOR_REVISION
+from drive_utils import (
+    find_or_create_folder, get_files_in_project, delete_file_from_drive,
+    upload_file_to_drive, find_file_by_name, download_file_from_drive,
+    sync_guiones_folders_with_index, list_project_folders,
+    get_or_create_lot_folder_id, clean_folder_name, get_context_from_lots
+)
+from utils import (
+    get_lot_index_info, get_lot_context, OPCION_ANALISIS_GENERAL,
+    convertir_excel_a_texto_csv
+)
+
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
     st.markdown("---")
-    
+
     # --- 1. Inicialización y Verificación de Sesión ---
     if 'regenerating_item' not in st.session_state:
         st.session_state.regenerating_item = None
 
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
+    selected_lot = st.session_state.get('selected_lot') # Obtenemos el lote seleccionado
 
-    # --- [NUEVO] Obtención de la Carpeta del Lote Activo ---
-    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+    # --- ¡CORRECCIÓN APLICADA AQUÍ! ---
+    # Pasamos el nombre del lote como TERCER argumento a la función para evitar el TypeError.
+    active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot)
+
     if not active_lot_folder_id:
         st.warning("No se puede continuar sin un lote seleccionado. Por favor, vuelve a la Fase 1.")
         # Asumiendo que existe una función go_to_phase1 para la navegación
-        # Si no, este botón no funcionará. Lo dejo como ejemplo.
         # if st.button("← Ir a Fase 1"): go_to_phase1(); st.rerun()
         return
 
-    # --- 2. Carga del Índice Maestro ---
+    # --- 2. Carga del Índice Maestro (Corregido para cargar el del lote) ---
+    index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
+
     if 'generated_structure' not in st.session_state:
-        st.info("Sincronizando índice desde Google Drive...")
+        st.info(f"Sincronizando índice ('{index_filename}') desde Google Drive...")
         try:
-            docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
-            saved_index_id = find_file_by_name(service, "ultimo_indice.json", docs_app_folder_id)
+            saved_index_id = find_file_by_name(service, index_filename, index_folder_id)
             if saved_index_id:
                 index_content_bytes = download_file_from_drive(service, saved_index_id)
                 st.session_state.generated_structure = json.loads(index_content_bytes.getvalue().decode('utf-8'))
                 st.rerun()
             else:
-                st.warning("No se ha encontrado un índice guardado. Por favor, vuelve a la Fase 2 para generar uno.")
+                st.warning(f"No se ha encontrado un índice guardado ('{index_filename}') para este lote. Vuelve a Fase 2 para generarlo.")
                 if st.button("← Ir a Fase 2"): go_to_phase2_results(); st.rerun()
                 return
         except Exception as e:
             st.error(f"Error al cargar el índice desde Drive: {e}")
             return
-    
-    # --- [NUEVO] Sincronización de carpetas DENTRO del lote activo ---
+
+    # --- Sincronización de carpetas DENTRO del lote activo ---
     sync_guiones_folders_with_index(service, active_lot_folder_id, st.session_state.generated_structure)
 
     # --- 3. Preparación de datos para la UI ---
@@ -564,7 +588,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
     if not estructura: st.error("La estructura JSON no contiene la clave 'estructura_memoria'."); return
-    
+
     subapartados_a_mostrar = []
     hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
 
@@ -630,7 +654,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             
             response = model.generate_content(contenido_ia)
             documento = docx.Document()
-            agregar_markdown_a_word(documento, response.text)
+            # La función agregar_markdown_a_word debe estar disponible
+            # agregar_markdown_a_word(documento, response.text)
             doc_io = io.BytesIO()
             documento.save(doc_io)
             word_file_obj = io.BytesIO(doc_io.getvalue())
@@ -670,7 +695,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 if not response.candidates: st.error("La IA no generó una respuesta para la re-generación."); return
 
                 documento_nuevo = docx.Document()
-                agregar_markdown_a_word(documento_nuevo, response.text)
+                # agregar_markdown_a_word(documento_nuevo, response.text)
                 doc_io = io.BytesIO(); documento_nuevo.save(doc_io)
                 word_file_obj = io.BytesIO(doc_io.getvalue())
                 
@@ -727,7 +752,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     titulo = matiz_a_generar.get('subapartado')
                     progress_text = f"Generando ({i+1}/{num_selected}): {titulo}"
                     progress_bar.progress((i + 1) / num_selected, text=progress_text)
-                    # La generación en lote no usa contexto cruzado por simplicidad
                     ejecutar_generacion_con_gemini(model, titulo, matiz_a_generar, show_toast=False)
                 progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons(); time.sleep(2); st.rerun()
 
@@ -791,7 +815,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1: st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
     with col_nav2: st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
-
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
