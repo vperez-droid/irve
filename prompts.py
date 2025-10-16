@@ -90,8 +90,6 @@ Debes explicar todo como si el que fuera a leer las indicaciones no supiera nada
 }
 """
 
-# prompts.py
-
 PROMPT_PLIEGOS = """
 # TAREA: Analizar documentos de licitación y generar una estructura JSON estratégica.
 
@@ -286,7 +284,6 @@ Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato rel
 Genera únicamente el objeto JSON corregido y completo. No incluyas ningún texto fuera de él.
 """
 
-# Pega esto en tu archivo prompts.py, reemplazando el PROMPT_DESARROLLO original
 
 PROMPT_DESARROLLO = """
 **SYSTEM DIRECTIVE: YOUR ENTIRE RESPONSE MUST BE A SINGLE, VALID JSON OBJECT. ALL TEXT WITHIN THE JSON MUST BE IN THIS LANGUAGE: {idioma}. YOU ARE A CONTENT ARCHITECT, NOT A CONSULTANT. YOUR JOB IS TO DECONSTRUCT, NOT TO ANALYZE OR EVALUATE.**
@@ -453,7 +450,6 @@ Estructura tu respuesta de la siguiente manera:
 - (Ofrece un breve párrafo final resumiendo si la licitación parece viable y mencionando cualquier riesgo o punto crítico detectado)
 """
 
-# En prompts.py, reemplaza la variable incompleta por esta:
 
 PROMPT_GEMINI_PROPUESTA_ESTRATEGICA = """
 **[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
