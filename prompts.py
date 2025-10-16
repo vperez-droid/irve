@@ -108,9 +108,12 @@ El idioma principal para la memoria es: {idioma}.
 # REGLAS ESTRATÉGICAS DE GENERACIÓN
 1.  **PONDERACIÓN POR PUNTUACIÓN (REGLA DEL CLIENTE - ¡CRÍTICA!):** Al distribuir las páginas en `plan_extension`, DEBES hacerlo de forma proporcional a la puntuación de cada apartado. **Los apartados con más puntos DEBEN tener asignadas más páginas.** Si un apartado vale 20 puntos y otro 5, el primero debe tener significativamente más páginas. Si no se especifica puntuación, distribuye el resto de páginas de forma lógica.
 2.  **CONSISTENCIA:** La suma de `paginas_sugeridas_apartado` debe ser coherente con el `max_paginas` detectado. La suma de `paginas_sugeridas` dentro de `desglose_subapartados` debe ser igual al total del apartado.
-**3.  ESTILO DE TÍTULOS (REGLA DE ESTILO CRÍTICA): Al generar los textos para las claves "apartado" y "subapartados" en la `estructura_memoria`, DEBES usar 'Sentence case'. Esto significa que solo la primera palabra y los nombres propios (como 'Galicia', 'ISO 9001') deben ir en mayúscula.
-    -   Ejemplo INCORRECTO: "4.1. Modelo de Gestión de Calidad"
-    -   Ejemplo CORRECTO: "4.1. Modelo de gestión de calidad"**
+
+# REGLA DE ESTILO CRÍTICA E INNEGOCIABLE PARA TÍTULOS
+Al generar los textos para las claves "apartado" y "subapartados", DEBES USAR OBLIGATORIAMENTE 'Sentence case'.
+ESTO SIGNIFICA QUE SOLO LA PRIMERA PALABRA Y LOS NOMBRES PROPIOS (ej: 'Galicia', 'ISO 9001') DEBEN IR EN MAYÚSCULA.
+ESTÁ TERMINANTEMENTE PROHIBIDO USAR 'Title Case' (Poner en Mayúscula Cada Palabra).
+OBSERVA EL EJEMPLO CORREGIDO ABAJO. TU SALIDA DEBE IMITAR ESTE ESTILO.
 
 # EJEMPLO DE LA ESTRUCTURA JSON REQUERIDA
 {{
@@ -122,35 +125,42 @@ El idioma principal para la memoria es: {idioma}.
   }},
   "estructura_memoria": [
     {{
-      "apartado": "1. Introducción y Contexto",
+      "apartado": "1. Introducción y contexto",
       "subapartados": [
-        "1.1. Objeto del Proyecto",
-        "1.2. Entendimiento de las Necesidades"
+        "1.1. Objeto del proyecto",
+        "1.2. Entendimiento de las necesidades"
+      ]
+    }},
+    {{
+      "apartado": "2. Desarrollo detallado de los bloques de servicios",
+      "subapartados": [
+        "2.1. Metodología de trabajo propuesta",
+        "2.2. Plan de calidad y mejora del servicio"
       ]
     }}
   ],
   "matices_desarrollo": [
     {{
-      "apartado": "1. Introducción y Contexto",
-      "subapartado": "1.1. Objeto del Proyecto",
+      "apartado": "1. Introducción y contexto",
+      "subapartado": "1.1. Objeto del proyecto",
       "indicaciones": "Describir brevemente el objetivo principal de la licitación.",
       "palabras_clave": ["objetivo", "alcance", "alineación estratégica"]
     }}
   ],
   "plan_extension": [
     {{
-      "apartado": "2. Solución Propuesta",
+      "apartado": "2. Solución propuesta",
       "paginas_sugeridas_apartado": 15,
       "puntuacion_sugerida": "45 puntos [o 'N/D']",
       "desglose_subapartados": [
         {{
-          "subapartado": "2.1. Arquitectura Técnica",
+          "subapartado": "2.1. Arquitectura técnica",
           "paginas_sugeridas": 8,
           "min_caracteres_sugeridos": 15000,
           "max_caracteres_sugeridos": 18000
         }},
         {{
-          "subapartado": "2.2. Metodología de Trabajo",
+          "subapartado": "2.2. Metodología de trabajo",
           "paginas_sugeridas": 5,
           "min_caracteres_sugeridos": 7500,
           "max_caracteres_sugeridos": 10500
@@ -163,9 +173,9 @@ El idioma principal para la memoria es: {idioma}.
 # ANÁLISIS A REALIZAR
 - **titulo_memoria**: Genera un título descriptivo basado en el objeto de la licitación.
 - **configuracion_licitacion**: Extrae los límites de páginas y reglas de formato.
-- **estructura_memoria**: Crea un índice detallado y lógico basado en los requisitos y criterios de evaluación.
+- **estructura_memoria**: Crea un índice detallado y lógico basado en los requisitos y criterios de evaluación, **siguiendo estrictamente la regla de estilo 'Sentence case' para todos los títulos**.
 - **matices_desarrollo**: Para cada subapartado, proporciona indicaciones claras sobre qué escribir.
-- **plan_extension**: Para cada apartado principal, realiza CUATRO tareas, SIGUIENDO LAS REGLAS ESTRATÉGICAS:
+- **plan_extension**: Para cada apartado principal, realiza CUATRO tareas, SIGUIENDO LAS REGLAS ESTRATÉGICAS.
     1.  Asigna un número total de páginas (`paginas_sugeridas_apartado`) **ponderando según la puntuación del apartado**.
     2.  Busca y añade la puntuación para ese apartado (`puntuacion_sugerida`).
     3.  Desglosa la asignación de páginas entre sus subapartados (`desglose_subapartados`).
@@ -173,7 +183,6 @@ El idioma principal para la memoria es: {idioma}.
 
 Ahora, analiza los documentos adjuntos y genera el objeto JSON completo, aplicando rigurosamente todas las reglas.
 """
-
 
 PROMPT_PREGUNTAS_TECNICAS = """
 Actúa como un planificador de licitación. Te quieres presentar a una licitación y debes crear un documento enfocando el contenido que aparecerá en este para que tus compañeros vean tu propuesta
