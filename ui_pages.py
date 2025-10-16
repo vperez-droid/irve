@@ -12,7 +12,7 @@ import time
 import docx
 from pypdf import PdfReader
 from prompts import (
-PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_CONSULTOR_REVISION, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
+PROMPT_GPT_TABLA_PLANIFICACION, PROMPT_DETECTAR_LOTES, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_CONSULTOR_REVISION, PROMPT_GEMINI_GUION_PLANIFICACION, PROMPT_DESARROLLO, PROMPT_GENERAR_INTRODUCCION, PROMPT_PLIEGOS, PROMPT_REQUISITOS_CLAVE
 )
 from drive_utils import (
     find_or_create_folder, get_files_in_project, delete_file_from_drive,
@@ -27,6 +27,7 @@ from utils import (
     natural_sort_key, 
     convertir_excel_a_texto_csv # <-- ¡IMPORTANTE! Se añade la nueva función.
 )
+from app import get_lot_context, OPCION_ANALISIS_GENERAL
 
 # =============================================================================
 #           PÁGINA DE BIENVENIDA / INICIO DE SESIÓN
@@ -106,20 +107,20 @@ def project_selection_page(go_to_landing, go_to_phase1):
 # =============================================================================
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
-    st.markdown(f"<h3>FASE 1: Análisis de Viabilidad desde Google Drive</h3>", unsafe_allow_html=True)
+    st.markdown(f"<h3>FASE 1: Análisis de Lotes y Viabilidad</h3>", unsafe_allow_html=True)
     ANALYSIS_FILENAME = "Analisis_de_Viabilidad.docx"
 
     # --- 1. Verificación de sesión y conexión con Drive ---
     if not st.session_state.get('selected_project'):
         st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
         go_to_project_selection(); st.rerun()
-        st.stop()
+        return
     
     project_name = st.session_state.selected_project['name']
     project_folder_id = st.session_state.selected_project['id']
     service = st.session_state.drive_service
     
-    st.info(f"Proyecto activo: **{project_name}**. Se analizarán los documentos de la carpeta 'Pliegos'.")
+    st.info(f"Proyecto activo: **{project_name}**.")
 
     # --- 2. Gestión de archivos en 'Pliegos' ---
     with st.container(border=True):
@@ -139,7 +140,6 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         with st.expander("Subir nuevos documentos a 'Pliegos'"):
             uploaded_files = st.file_uploader(
                 "Arrastra aquí los archivos que quieras añadir al proyecto",
-                # [CAMBIO 1] Se añade 'xlsx' a los tipos de archivo permitidos.
                 type=['pdf', 'docx', 'xlsx'], 
                 accept_multiple_files=True, key="drive_file_uploader"
             )
@@ -150,95 +150,134 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.toast("¡Archivos subidos!"); st.rerun()
 
     st.markdown("---")
-    st.header("Extracción de Requisitos Clave")
 
-    # --- 3. Lógica de Generación, Guardado y Estado ---
-    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
-    
-    if 'analysis_doc_id' not in st.session_state:
-        st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
-
-    # Función interna para no repetir código
-    def generate_and_save_analysis():
-        with st.spinner("🧠 Descargando y analizando documentos con Gemini..."):
+    # --- 3. [NUEVA LÓGICA] Detección y Selección de Lotes ---
+    def detectar_lotes():
+        with st.spinner("Analizando documentos para detectar lotes..."):
             try:
-                idioma = st.session_state.get('project_language', 'Español')
-                prompt = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma)
-                
-                contenido_ia = [prompt]
+                contenido_ia = [PROMPT_DETECTAR_LOTES]
                 for file_info in documentos_pliegos:
                     file_bytes_io = download_file_from_drive(service, file_info['id'])
-                    
-                    # --- [CAMBIO 2 - INICIO DE LA NUEVA LÓGICA] ---
-                    # Se implementa un condicional para tratar cada tipo de archivo.
                     nombre_archivo = file_info['name']
-                    
                     if nombre_archivo.lower().endswith('.xlsx'):
-                        # Si es un Excel, lo convertimos a texto CSV usando la nueva función.
-                        st.write(f"⚙️ Procesando Excel: {nombre_archivo}...")
                         texto_csv = convertir_excel_a_texto_csv(file_bytes_io, nombre_archivo)
-                        if texto_csv:
-                            # Añadimos el texto plano a la lista de contenidos para la IA.
-                            contenido_ia.append(texto_csv)
+                        if texto_csv: contenido_ia.append(texto_csv)
                     else:
-                        # Si es PDF o DOCX, usamos el método de análisis nativo como antes.
                         contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
-                    # --- [CAMBIO 2 - FIN DE LA NUEVA LÓGICA] ---
-
-                response = model.generate_content(contenido_ia)
-                if not response.candidates:
-                    st.error("Gemini no generó una respuesta."); return
-
-                documento = docx.Document()
-                agregar_markdown_a_word(documento, response.text)
-                buffer = io.BytesIO()
-                documento.save(buffer)
-                buffer.seek(0)
                 
-                buffer.name = ANALYSIS_FILENAME
-                buffer.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
+                json_limpio = limpiar_respuesta_json(response.text)
+                resultado = json.loads(json_limpio)
                 
-                if st.session_state.get('analysis_doc_id'):
-                    delete_file_from_drive(service, st.session_state['analysis_doc_id'])
-
-                new_file_id = upload_file_to_drive(service, buffer, docs_app_folder_id)
-                st.session_state.analysis_doc_id = new_file_id
-                st.toast("✅ ¡Análisis guardado en tu Drive!")
+                lotes = resultado.get("lotes_encontrados", [])
+                st.session_state.detected_lotes = lotes if lotes else ["SIN_LOTES"] # Si la lista está vacía, marcamos que no hay
                 st.rerun()
 
             except Exception as e:
-                st.error(f"Ocurrió un error crítico durante el análisis: {e}")
+                st.error(f"Ocurrió un error al detectar lotes: {e}")
 
-    # --- 4. UI Condicional: Muestra botones según si el archivo existe ---
-    if st.session_state.analysis_doc_id:
-        st.success("✔️ Ya existe un análisis de viabilidad guardado en tu proyecto de Drive.")
-        
-        if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
-            with st.spinner("Descargando desde Drive..."):
-                file_bytes = download_file_from_drive(service, st.session_state.analysis_doc_id)
-                st.download_button(
-                    label="¡Listo! Haz clic aquí para descargar",
-                    data=file_bytes,
-                    file_name=ANALYSIS_FILENAME,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True
-                )
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.button("🔁 Re-generar Análisis", on_click=generate_and_save_analysis, use_container_width=True, disabled=not documentos_pliegos)
-        with col2:
-            st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
-
-    else:
-        st.info("Aún no se ha generado el documento de análisis para este proyecto.")
-        st.button(
-            "Analizar Pliegos y Generar Documento", 
-            on_click=generate_and_save_analysis, 
-            type="primary", 
-            use_container_width=True, 
-            disabled=not documentos_pliegos
+    # UI condicional para el flujo de detección de lotes
+    # Si aún no hemos comprobado, mostramos el botón para hacerlo
+    if st.session_state.detected_lotes is None:
+        st.header("2. Detección de Lotes")
+        st.info("Antes de analizar la viabilidad, la aplicación comprobará si la licitación está dividida en lotes.")
+        st.button("Analizar Lotes en los Documentos", on_click=detectar_lotes, type="primary", use_container_width=True, disabled=not documentos_pliegos)
+    
+    # Si hemos comprobado y SÍ hay lotes, mostramos el selector
+    elif st.session_state.detected_lotes != ["SIN_LOTES"] and st.session_state.selected_lot is None:
+        st.header("2. Selección de Lote")
+        st.success("¡Se han detectado lotes en la documentación!")
+        opciones_lotes = ["-- Por favor, elige un lote --"] + st.session_state.detected_lotes + [OPCION_ANALISIS_GENERAL]
+        lote_elegido = st.selectbox(
+            "Elige el lote al que quieres presentarte. El resto del análisis se centrará en tu selección.",
+            options=opciones_lotes,
+            index=0,
+            key="lot_selector"
         )
+        if lote_elegido and lote_elegido != "-- Por favor, elige un lote --":
+            st.session_state.selected_lot = lote_elegido
+            st.rerun()
+    
+    # --- 4. Lógica de Generación de Viabilidad (se muestra solo si se completó el paso de lotes) ---
+    # La generación solo se activa si no hay lotes, o si habiéndolos, ya se ha seleccionado uno.
+    else:
+        # Si no había lotes, asignamos un valor por defecto para que la lógica siga funcionando
+        if st.session_state.detected_lotes == ["SIN_LOTES"] and st.session_state.selected_lot is None:
+             st.session_state.selected_lot = OPCION_ANALISIS_GENERAL
+
+        st.header("3. Extracción de Requisitos Clave")
+        if st.session_state.selected_lot != OPCION_ANALISIS_GENERAL:
+             st.info(f"Se generará el análisis de viabilidad centrado en: **{st.session_state.selected_lot}**")
+        else:
+             st.info("Se generará un análisis de viabilidad general.")
+
+        docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
+        if 'analysis_doc_id' not in st.session_state:
+            st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
+
+        def generate_and_save_analysis():
+            with st.spinner("🧠 Descargando y analizando documentos con Gemini..."):
+                try:
+                    idioma = st.session_state.get('project_language', 'Español')
+                    contexto_lote = get_lot_context()
+                    prompt = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma, contexto_lote=contexto_lote)
+                    
+                    contenido_ia = [prompt]
+                    for file_info in documentos_pliegos:
+                        file_bytes_io = download_file_from_drive(service, file_info['id'])
+                        nombre_archivo = file_info['name']
+                        if nombre_archivo.lower().endswith('.xlsx'):
+                            texto_csv = convertir_excel_a_texto_csv(file_bytes_io, nombre_archivo)
+                            if texto_csv: contenido_ia.append(texto_csv)
+                        else:
+                            contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
+
+                    response = model.generate_content(contenido_ia)
+                    if not response.candidates: st.error("Gemini no generó una respuesta."); return
+                    
+                    documento = docx.Document()
+                    agregar_markdown_a_word(documento, response.text)
+                    buffer = io.BytesIO()
+                    documento.save(buffer); buffer.seek(0)
+                    buffer.name = ANALYSIS_FILENAME
+                    buffer.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    
+                    if st.session_state.get('analysis_doc_id'):
+                        delete_file_from_drive(service, st.session_state['analysis_doc_id'])
+
+                    new_file_id = upload_file_to_drive(service, buffer, docs_app_folder_id)
+                    st.session_state.analysis_doc_id = new_file_id
+                    st.toast("✅ ¡Análisis guardado en tu Drive!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Ocurrió un error crítico durante el análisis: {e}")
+
+        if st.session_state.analysis_doc_id:
+            st.success("✔️ Ya existe un análisis de viabilidad guardado en tu proyecto de Drive.")
+            if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
+                with st.spinner("Descargando desde Drive..."):
+                    file_bytes = download_file_from_drive(service, st.session_state.analysis_doc_id)
+                    st.download_button(
+                        label="¡Listo! Haz clic aquí para descargar",
+                        data=file_bytes,
+                        file_name=ANALYSIS_FILENAME,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True
+                    )
+            col1, col2 = st.columns(2)
+            with col1:
+                st.button("🔁 Re-generar Análisis", on_click=generate_and_save_analysis, use_container_width=True, disabled=not documentos_pliegos)
+            with col2:
+                st.button("Continuar a Generación de Índice (Fase 2) →", on_click=go_to_phase2, use_container_width=True, type="primary")
+        else:
+            st.info("Aún no se ha generado el documento de análisis para este proyecto.")
+            st.button(
+                "Analizar Pliegos y Generar Documento", 
+                on_click=generate_and_save_analysis, 
+                type="primary", 
+                use_container_width=True, 
+                disabled=not documentos_pliegos
+            )
 
     st.write("")
     st.markdown("---")
@@ -329,25 +368,28 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
 # =============================================================================
 
 def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regeneration):
-    st.markdown("<h3>FASE 2: Revisión de Resultados</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>FASE 2: Revisión de Resultados del Índice</h3>", unsafe_allow_html=True)
     st.markdown("Revisa el índice, la guía de redacción y el plan estratégico. Puedes hacer ajustes con feedback, regenerarlo todo desde cero, o aceptarlo para continuar.")
     st.markdown("---")
     st.button("← Volver a la gestión de archivos", on_click=go_to_phase2)
 
     if 'generated_structure' not in st.session_state or not st.session_state.generated_structure:
-        st.warning("No se ha generado ninguna estructura.")
+        st.warning("No se ha generado ninguna estructura. Por favor, vuelve al paso anterior.")
         return
 
     def handle_regeneration_with_feedback():
-        feedback_text = st.session_state.feedback_area
-        if not feedback_text:
-            st.warning("Por favor, escribe tus indicaciones en el área de texto.")
+        feedback_text = st.session_state.get("feedback_area", "")
+        if not feedback_text.strip():
+            st.warning("Por favor, escribe tus indicaciones en el área de texto para la regeneración.")
             return
 
         with st.spinner("🧠 Incorporando tu feedback y regenerando la estructura..."):
             try:
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                prompt_con_idioma = PROMPT_REGENERACION.format(idioma=idioma_seleccionado)
+                
+                # [MODIFICADO] Se añade la obtención del contexto del lote
+                contexto_lote = get_lot_context()
+                prompt_con_idioma = PROMPT_REGENERACION.format(idioma=idioma_seleccionado, contexto_lote=contexto_lote)
                 
                 contenido_ia_regeneracion = [
                     prompt_con_idioma,
@@ -357,28 +399,22 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 
                 if st.session_state.get('uploaded_pliegos'):
                     service = st.session_state.drive_service
-                    st.write("Analizando documentos de referencia para la regeneración...") # Feedback para el usuario
+                    st.write("Analizando documentos de referencia para la regeneración...")
                     
-                    # --- [CAMBIO INICIA] ---
-                    # Este es el bloque de código corregido que ahora maneja XLSX correctamente.
                     for file_info in st.session_state.uploaded_pliegos:
                         file_content_bytes = download_file_from_drive(service, file_info['id'])
                         nombre_archivo = file_info['name']
                         
                         if nombre_archivo.lower().endswith('.xlsx'):
-                            # 1. Si es un Excel, se convierte a texto CSV.
                             st.write(f"⚙️ Procesando Excel para regeneración: {nombre_archivo}...")
                             texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
                             if texto_csv:
                                 contenido_ia_regeneracion.append(texto_csv)
-                        
                         else:
-                            # 2. Para PDF, DOCX y otros formatos soportados, se envía de forma nativa.
                             contenido_ia_regeneracion.append({
                                 "mime_type": file_info['mimeType'], 
                                 "data": file_content_bytes.getvalue()
                             })
-                    # --- [CAMBIO TERMINA] ---
 
                 generation_config = genai.GenerationConfig(response_mime_type="application/json")
                 response_regeneracion = model.generate_content(contenido_ia_regeneracion, generation_config=generation_config)
@@ -403,7 +439,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 
             except json.JSONDecodeError as e:
                 st.error(f"Error de formato: La IA devolvió una respuesta que no es un JSON válido. Error: {e}")
-                if 'response_regeneracion' in locals():
+                if 'response_regeneracion' in locals() and hasattr(response_regeneracion, 'text'):
                     st.info("Respuesta recibida de la IA que causó el error:")
                     st.code(response_regeneracion.text)
             except Exception as e:
@@ -494,18 +530,13 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     st.rerun()
                 except Exception as e:
                     st.error(f"Ocurrió un error durante la sincronización o guardado: {e}")
-                    
-# Reemplaza tu función phase_3_page en ui_pages.py con esta versión corregida y funcional
-
-# pégalo en tu archivo ui_pages.py, reemplazando la función phase_3_page original
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
-    USE_GPT_MODEL = False # PUESTO EN FALSE PARA USAR GEMINI
+    USE_GPT_MODEL = False 
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
     st.markdown("---")
     
-    # --- INICIALIZACIÓN DE ESTADO PARA LA UI DE RE-GENERACIÓN ---
     if 'regenerating_item' not in st.session_state:
         st.session_state.regenerating_item = None
 
@@ -528,6 +559,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             st.error(f"Error al cargar el índice desde Drive: {e}")
             return
     
+    # ... (El código para extraer 'estructura' y 'matices' se mantiene igual)
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
@@ -556,7 +588,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
     if not subapartados_a_mostrar: st.warning("El índice está vacío o tiene un formato incorrecto."); return
 
-    # --- LÓGICA DE GENERACIÓN (SIN CAMBIOS) ---
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, show_toast=True):
         nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", titulo)
         nombre_archivo = nombre_limpio + ".docx"
@@ -569,7 +600,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
             
             idioma_seleccionado = st.session_state.get('project_language', 'Español')
-            prompt_con_idioma = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma_seleccionado)
+            
+            # [MODIFICACIÓN 1]
+            contexto_lote = get_lot_context()
+            prompt_con_idioma = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma_seleccionado, contexto_lote=contexto_lote)
+            
             contenido_ia = [prompt_con_idioma]
             
             contenido_ia.append("--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False))
@@ -585,6 +620,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 else:
                     contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
             
+            # ... (El resto de la función para subir documentos de apoyo y guardar el resultado se mantiene igual)
             doc_extra_key = f"upload_{titulo}"
             if doc_extra_key in st.session_state and st.session_state[doc_extra_key]:
                 contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
@@ -613,7 +649,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             return True
         except Exception as e: st.error(f"Error al generar con Gemini para '{titulo}': {e}"); return False
 
-    # --- LÓGICA COMPLETA PARA RE-GENERAR CON FEEDBACK (MANUAL) ---
     def handle_confirm_regeneration(model, titulo, file_id_borrador, feedback):
         if not feedback.strip():
             st.warning("Por favor, introduce tu feedback para la re-generación.")
@@ -624,7 +659,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 service = st.session_state.drive_service
                 project_folder_id = st.session_state.selected_project['id']
 
-                # Descarga el borrador original para tenerlo de contexto
                 borrador_bytes = download_file_from_drive(service, file_id_borrador)
                 doc = docx.Document(io.BytesIO(borrador_bytes.getvalue()))
                 borrador_original_texto = "\n".join([p.text for p in doc.paragraphs])
@@ -633,12 +667,14 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
                 
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                prompt_con_idioma = PROMPT_CONSULTOR_REVISION.format(idioma=idioma_seleccionado)
+
+                # [MODIFICACIÓN 2]
+                contexto_lote = get_lot_context()
+                prompt_con_idioma = PROMPT_CONSULTOR_REVISION.format(idioma=idioma_seleccionado, contexto_lote=contexto_lote)
                 
-                # Construye el prompt con las tres partes
                 contenido_ia = [prompt_con_idioma]
                 contenido_ia.append("--- BORRADOR ORIGINAL ---\n" + borrador_original_texto)
-                contenido_ia.append("--- FEEDBACK DEL CLIENTE ---\n" + feedback) # El feedback viene del text_area
+                contenido_ia.append("--- FEEDBACK DEL CLIENTE ---\n" + feedback)
                 
                 st.write("Analizando Pliegos para dar contexto...")
                 for file_info in pliegos_en_drive:
@@ -650,7 +686,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     st.error("La IA no generó una respuesta para la re-generación.")
                     return
 
-                # Crea y guarda el nuevo documento, reemplazando el antiguo
+                # ... (El resto de la función para guardar el nuevo documento se mantiene igual)
                 documento_nuevo = docx.Document()
                 agregar_markdown_a_word(documento_nuevo, response.text)
                 doc_io = io.BytesIO()
@@ -665,49 +701,40 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
                 subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
                 
-                delete_file_from_drive(service, file_id_borrador) # Borra el viejo
-                upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id) # Sube el nuevo
+                delete_file_from_drive(service, file_id_borrador)
+                upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
                 
                 st.toast(f"¡Guion para '{titulo}' re-generado con éxito!")
-                st.session_state.regenerating_item = None # Resetea la UI
+                st.session_state.regenerating_item = None
                 st.rerun()
 
             except Exception as e:
                 st.error(f"Error crítico durante la re-generación: {e}")
                 st.session_state.regenerating_item = None
-
-    # --- FUNCIONES DE CONTROL DE UI ---
-    def ejecutar_regeneracion(titulo):
-        st.session_state.regenerating_item = titulo
-        st.rerun()
-
+    
+    # ...
+    # El resto de la función (UI, botones, etc.) no necesita cambios y se mantiene igual.
+    # ...
+    
+    # --- (Todo el resto de la función se pega aquí sin cambios) ---
+    def ejecutar_regeneracion(titulo): st.session_state.regenerating_item = titulo; st.rerun()
     def ejecutar_borrado(titulo, folder_id_to_delete):
         with st.spinner(f"Eliminando guion para '{titulo}'..."):
             try:
                 service = st.session_state.drive_service
-                if delete_file_from_drive(service, folder_id_to_delete):
-                    st.toast(f"Guion para '{titulo}' eliminado correctamente.")
-                    st.rerun()
-                else:
-                    st.error(f"No se pudo eliminar la carpeta '{titulo}'.")
-            except Exception as e:
-                st.error(f"Ocurrió un error inesperado durante el borrado: {e}")
-
-    # --- SINCRONIZACIÓN CON DRIVE (SIN CAMBIOS) ---
+                if delete_file_from_drive(service, folder_id_to_delete): st.toast(f"Guion para '{titulo}' eliminado."); st.rerun()
+                else: st.error(f"No se pudo eliminar la carpeta '{titulo}'.")
+            except Exception as e: st.error(f"Ocurrió un error inesperado: {e}")
     with st.spinner("Sincronizando con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=project_folder_id)
         carpetas_existentes_response = get_files_in_project(service, guiones_folder_id)
         carpetas_de_guiones_existentes = {f['name']: f['id'] for f in carpetas_existentes_response if f['mimeType'] == 'application/vnd.google-apps.folder'}
         nombres_carpetas_existentes = set(carpetas_de_guiones_existentes.keys())
-
-    # --- UI DE GENERACIÓN EN LOTE (SIN CAMBIOS) ---
     st.subheader("Generación de Borradores en Lote")
     pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if re.sub(r'[\\/*?:"<>|]', "", matiz.get('subapartado')) not in nombres_carpetas_existentes]
-    
     def toggle_all_checkboxes():
         new_state = st.session_state.get('select_all_checkbox', False)
         for key in pending_keys: st.session_state[f"cb_{key}"] = new_state
-
     with st.container(border=True):
         col_sel_1, col_sel_2 = st.columns([1, 2])
         with col_sel_1: st.checkbox("Seleccionar Todos / Ninguno", key="select_all_checkbox", on_change=toggle_all_checkboxes, disabled=not pending_keys)
@@ -724,7 +751,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     if USE_GPT_MODEL: st.warning("La generación con GPT está desactivada.")
                     else: ejecutar_generacion_con_gemini(model, titulo, matiz_a_generar, show_toast=False)
                 progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons(); time.sleep(2); st.rerun()
-    
     st.markdown("---")
     st.subheader("Gestión de Guiones de Subapartados")
     for i, matiz in enumerate(subapartados_a_mostrar):
@@ -733,49 +759,22 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo)
         if nombre_limpio in nombres_carpetas_existentes: estado = "📄 Generado"; subapartado_folder_id = carpetas_de_guiones_existentes[nombre_limpio]; files_in_subfolder = get_files_in_project(service, subapartado_folder_id); file_info = next((f for f in files_in_subfolder if f['name'].endswith('.docx')), None)
         else: estado = "⚪ No Generado"; file_info, subapartado_folder_id = None, None
-        
         with st.container(border=True):
-            # --- UI CONDICIONAL PARA MOSTRAR FEEDBACK O VISTA NORMAL ---
             if st.session_state.regenerating_item == subapartado_titulo:
                 st.subheader(f"Re-generar: {subapartado_titulo}")
                 st.info("Revisa el borrador en Drive, luego escribe o pega tus indicaciones de mejora en el cuadro de abajo.")
-                
-                feedback = st.text_area(
-                    "Feedback para la IA:", 
-                    height=200, 
-                    key=f"feedback_text_area_{i}",
-                    placeholder="Ej: 'El enfoque de la metodología es incorrecto, cámbialo por Lean. Menciona específicamente las herramientas Trello y Slack.'\n'Añade un párrafo sobre nuestra experiencia en el sector retail.'"
-                )
-
+                feedback = st.text_area("Feedback para la IA:", height=200, key=f"feedback_text_area_{i}", placeholder="Ej: 'El enfoque de la metodología es incorrecto...'")
                 col_regen1, col_regen2 = st.columns(2)
-                with col_regen1:
-                    st.button(
-                        "✅ Confirmar y Re-generar", 
-                        key=f"confirm_regen_{i}",
-                        on_click=handle_confirm_regeneration,
-                        args=(model, subapartado_titulo, file_info['id'], feedback),
-                        type="primary",
-                        use_container_width=True
-                    )
-                with col_regen2:
-                    st.button("❌ Cancelar", key=f"cancel_regen_{i}", on_click=lambda: setattr(st.session_state, 'regenerating_item', None), use_container_width=True)
-            
+                with col_regen1: st.button("✅ Confirmar y Re-generar", key=f"confirm_regen_{i}", on_click=handle_confirm_regeneration, args=(model, subapartado_titulo, file_info['id'], feedback), type="primary", use_container_width=True)
+                with col_regen2: st.button("❌ Cancelar", key=f"cancel_regen_{i}", on_click=lambda: setattr(st.session_state, 'regenerating_item', None), use_container_width=True)
             else:
-                # --- VISTA NORMAL ---
                 col1, col2 = st.columns([2, 1])
                 with col1:
                     if estado == "⚪ No Generado": st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
                     else: st.write(f"**{subapartado_titulo}**")
                     st.caption(f"Estado: {estado}")
                     if estado == "⚪ No Generado":
-                        # [CAMBIO] Se añaden los tipos de archivo de imagen a la lista de formatos permitidos.
-                        st.file_uploader(
-                            "Aportar documentación de apoyo (PDF, DOCX, XLSX, PNG, JPG...)", 
-                            type=['pdf', 'docx', 'txt', 'xlsx', 'png', 'jpg', 'jpeg'], 
-                            key=f"upload_{subapartado_titulo}", 
-                            accept_multiple_files=True, 
-                            label_visibility="collapsed"
-                        )
+                        st.file_uploader("Aportar documentación de apoyo", type=['pdf', 'docx', 'txt', 'xlsx', 'png', 'jpg', 'jpeg'], key=f"upload_{subapartado_titulo}", accept_multiple_files=True, label_visibility="collapsed")
                 with col2:
                     if estado == "📄 Generado" and file_info:
                         st.link_button("Revisar en Drive", f"https://docs.google.com/document/d/{file_info['id']}/edit", use_container_width=True)
@@ -784,17 +783,13 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     else:
                         if st.button("Generar Borrador", key=f"gen_{i}", use_container_width=True):
                             with st.spinner(f"Generando borrador para '{subapartado_titulo}'..."):
-                                if USE_GPT_MODEL:
-                                    st.warning("La generación con GPT está desactivada.")
+                                if USE_GPT_MODEL: st.warning("La generación con GPT está desactivada.")
                                 else:
                                     if ejecutar_generacion_con_gemini(model, subapartado_titulo, matiz): st.rerun()
-                                
     st.markdown("---")
     col_nav1, col_nav2 = st.columns(2)
-    with col_nav1: 
-        st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
-    with col_nav2: 
-        st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
+    with col_nav1: st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
+    with col_nav2: st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
 
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
