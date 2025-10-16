@@ -517,25 +517,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 st.rerun()
             except Exception as e:
                 st.error(f"Ocurrió un error durante el guardado: {e}")
-# ui_pages.py
-
-# Asegúrate de tener estas importaciones al principio de tu archivo ui_pages.py
-import streamlit as st
-import json
-import io
-import time
-import docx
-from prompts import PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, PROMPT_CONSULTOR_REVISION
-from drive_utils import (
-    find_or_create_folder, get_files_in_project, delete_file_from_drive,
-    upload_file_to_drive, find_file_by_name, download_file_from_drive,
-    sync_guiones_folders_with_index, list_project_folders,
-    get_or_create_lot_folder_id, clean_folder_name, get_context_from_lots
-)
-from utils import (
-    get_lot_index_info, get_lot_context, OPCION_ANALISIS_GENERAL,
-    convertir_excel_a_texto_csv
-)
 
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
@@ -655,7 +636,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             response = model.generate_content(contenido_ia)
             documento = docx.Document()
             # La función agregar_markdown_a_word debe estar disponible
-            # agregar_markdown_a_word(documento, response.text)
+            agregar_markdown_a_word(documento, response.text) # <-- CORRECCIÓN 1 APLICADA
             doc_io = io.BytesIO()
             documento.save(doc_io)
             word_file_obj = io.BytesIO(doc_io.getvalue())
@@ -695,7 +676,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 if not response.candidates: st.error("La IA no generó una respuesta para la re-generación."); return
 
                 documento_nuevo = docx.Document()
-                # agregar_markdown_a_word(documento_nuevo, response.text)
+                agregar_markdown_a_word(documento_nuevo, response.text) # <-- CORRECCIÓN 2 APLICADA
                 doc_io = io.BytesIO(); documento_nuevo.save(doc_io)
                 word_file_obj = io.BytesIO(doc_io.getvalue())
                 
@@ -815,6 +796,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1: st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
     with col_nav2: st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
+
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
