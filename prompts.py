@@ -453,6 +453,7 @@ Estructura tu respuesta de la siguiente manera:
 - (Ofrece un breve párrafo final resumiendo si la licitación parece viable y mencionando cualquier riesgo o punto crítico detectado)
 """
 
+# En prompts.py, reemplaza la variable incompleta por esta:
 
 PROMPT_GEMINI_PROPUESTA_ESTRATEGICA = """
 **[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
@@ -538,7 +539,6 @@ Tu misión principal es crear texto en Markdown. SIN EMBARGO, cuando identifique
 **[ACCIÓN]**
 Ahora, analiza los documentos y genera el borrador del guion estratégico, aplicando TODAS las reglas, incluida la nueva regla de las tablas HTML.
 """
-
 
 
 
