@@ -576,32 +576,44 @@ Tu misión principal es crear texto en Markdown. SIN EMBARGO, cuando identifique
 Ahora, analiza los documentos y genera el borrador del guion estratégico, aplicando TODAS las reglas, incluida la nueva regla de las tablas HTML.
 """
 
-PROMPT_DETECTAR_LOTES = """
-Actúas como un escáner de documentos ultra-eficiente. Tu única tarea es analizar los documentos de licitación proporcionados y detectar si el contrato está dividido en lotes.
+PROMPT_DETECTAR_LOTES =  """
+Eres un asistente experto en analizar documentos de licitaciones públicas.
+Tu única y exclusiva tarea es identificar si el contrato está dividido en partes que se pueden adjudicar de forma independiente.
 
-## REGLAS ESTRICTAS:
-1.  Tu respuesta DEBE ser un objeto JSON válido. No incluyas texto antes o después.
-2.  El JSON debe contener una única clave: "lotes_encontrados".
-3.  El valor de "lotes_encontrados" debe ser una lista de strings.
-4.  Para cada lote que encuentres, extrae su identificador y una breve descripción (ej: "Lote 1: Servicio de Limpieza", "Lote A: Desarrollo de Software").
-5.  Si NO encuentras ninguna mención a lotes, devuelve la lista vacía: `[]`.
+**Instrucción Principal: Trata los términos 'Lote' y 'Bloque' como sinónimos.**
+Para esta tarea, ambos se refieren al mismo concepto: una división principal y separable del contrato. No busques jerarquías entre ellos (como bloques dentro de lotes). Simplemente identifica estas divisiones.
 
-## EJEMPLO DE SALIDA SI ENCUENTRAS LOTES:
+**Reglas de Detección:**
+
+1.  **Enfoque Exclusivo:** Busca únicamente las divisiones oficiales y explícitas del contrato. Las encontrarás típicamente en frases como "El contrato se divide en...", "La presente licitación consta de los siguientes lotes/bloques:", etc.
+2.  **Patrones a Buscar:** Presta especial atención a patrones claros como:
+    *   "Lote 1", "Lote Nº 2", "Lote A"
+    *   "Bloque 1", "Bloque A", "Bloque I"
+    *   Cualquier variación similar que denomine una parte separable del contrato.
+
+3.  **QUÉ IGNORAR (CRÍTICO PARA LA PRECISIÓN):** Tu principal desafío es no confundir la estructura del documento con la división del contrato. Ignora por completo y NO reportes como lotes o bloques lo siguiente:
+    *   Capítulos o Títulos del documento (Ej: "Capítulo 1: Objeto del Contrato").
+    *   Artículos, Cláusulas o Apartados (Ej: "Artículo 5. Criterios", "Apartado 3.2").
+    *   Anexos, Apéndices o Modelos (Ej: "Anexo II: Modelo de oferta técnica").
+    *   Listas de tareas o requisitos que no estén explícitamente agrupados bajo un "Lote" o "Bloque".
+
+**Formato de Salida Obligatorio:**
+
+*   Tu respuesta DEBE ser un objeto JSON válido.
+*   El JSON debe tener una única clave: `"lotes_encontrados"`.
+*   El valor de `"lotes_encontrados"` debe ser una lista de strings (un array de cadenas de texto).
+*   Cada string debe ser el nombre completo y descriptivo de la división encontrada (sea lote o bloque).
+*   **Si, tras un análisis riguroso, el contrato NO está dividido en lotes ni en bloques, devuelve una lista vacía `[]`.**
+
+Ejemplo de respuesta si encuentras lotes (usando la palabra "Lote"):
+```json
 {
   "lotes_encontrados": [
-    "Lote 1: Suministro de equipos informáticos",
-    "Lote 2: Mantenimiento de software",
-    "Lote 3: Soporte técnico"
+    "Lote 1: Servicio de limpieza de edificios municipales",
+    "Lote 2: Servicio de jardinería y mantenimiento de zonas verdes"
   ]
 }
 
-## EJEMPLO DE SALIDA SI NO ENCUENTRAS LOTES:
-{
-  "lotes_encontrados": []
-}
-
-Ahora, analiza los documentos y genera el JSON.
-"""
 
 
 
