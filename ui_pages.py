@@ -143,6 +143,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     def detectar_lotes():
         with st.spinner("Analizando documentos para detectar lotes..."):
             try:
+                # ... (resto de la función detectar_lotes es correcta) ...
                 contenido_ia = [PROMPT_DETECTAR_LOTES]
                 for file_info in documentos_pliegos:
                     file_bytes_io = download_file_from_drive(service, file_info['id'])
@@ -162,6 +163,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 st.error(f"Ocurrió un error al detectar lotes: {e}")
 
     st.header("2. Selección de Lote")
+    # ... (toda la lógica de selección de lote es correcta) ...
     if st.session_state.detected_lotes is None:
         st.info("Antes de analizar la viabilidad, la aplicación comprobará si la licitación está dividida en lotes.")
         st.button("Analizar Lotes en los Documentos", on_click=detectar_lotes, type="primary", use_container_width=True, disabled=not documentos_pliegos)
@@ -171,20 +173,14 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             st.session_state.selected_lot = OPCION_ANALISIS_GENERAL
     else:
         st.success("¡Se han detectado lotes en la documentación!")
-        
-        # --- [INICIO DE LA CORRECCIÓN] ---
-        # Si no hay ningún lote seleccionado todavía, seleccionamos el primero de la lista por defecto.
         if st.session_state.get('selected_lot') is None and st.session_state.detected_lotes:
             st.session_state.selected_lot = st.session_state.detected_lotes[0]
-        # --- [FIN DE LA CORRECCIÓN] ---
-
         opciones_lotes = st.session_state.detected_lotes + [OPCION_ANALISIS_GENERAL]
         current_selection = st.session_state.get('selected_lot')
         try:
             index = opciones_lotes.index(current_selection) if current_selection in opciones_lotes else 0
         except ValueError:
             index = 0
-
         def on_lot_change():
             new_lot = st.session_state.lot_selector_key
             if st.session_state.get('selected_lot') != new_lot:
@@ -203,12 +199,21 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         else:
              st.info("Se generará un análisis de viabilidad general.")
 
-        active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id)
+        # --- ¡CORRECCIÓN APLICADA AQUÍ! ---
+        # 1. Obtenemos el lote seleccionado de la sesión
+        selected_lot_name = st.session_state.get('selected_lot')
+        
+        # 2. Pasamos el nombre del lote como TERCER argumento a la función
+        active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot_name)
+        
+        # 3. El resto del código continúa igual
         docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
+        
         if 'analysis_doc_id' not in st.session_state:
             st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
 
         def generate_and_save_analysis():
+            # ... (la lógica interna de esta función es correcta) ...
             with st.spinner("🧠 Descargando y analizando documentos con Gemini..."):
                 try:
                     idioma = st.session_state.get('project_language', 'Español')
