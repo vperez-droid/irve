@@ -23,11 +23,11 @@ from drive_utils import (
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
     wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
-    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, generar_indice_word, CARACTERES_POR_PAGINA_MIN, CARACTERES_POR_PAGINA_MAX,
+    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, generar_indice_word, get_lot_context, OPCION_ANALISIS_GENERAL, 
+    CARACTERES_POR_PAGINA_MIN, CARACTERES_POR_PAGINA_MAX,
     natural_sort_key, 
     convertir_excel_a_texto_csv # <-- ¡IMPORTANTE! Se añade la nueva función.
 )
-from app import get_lot_context, OPCION_ANALISIS_GENERAL
 
 # =============================================================================
 #           PÁGINA DE BIENVENIDA / INICIO DE SESIÓN
