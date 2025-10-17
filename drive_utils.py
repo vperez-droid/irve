@@ -149,23 +149,6 @@ def get_files_in_project(service, project_folder_id):
     response = service.files().list(q=query, spaces='drive', fields='files(id, name, mimeType)').execute()
     return response.get('files', [])
 
-def sync_guiones_folders_with_index(service, parent_folder_id, new_index_structure):
-    """
-    Sincroniza carpetas de guiones dentro de una carpeta padre (que puede ser un lote).
-    Elimina las carpetas que ya no corresponden a ningún subapartado en el nuevo índice.
-    """
-    st.toast("🔄 Sincronizando carpetas de guiones con el nuevo índice...")
-    expected_folders = set()
-    if 'estructura_memoria' in new_index_structure:
-        for seccion in new_index_structure.get('estructura_memoria', []):
-            for subapartado_titulo in seccion.get('subapartados', []):
-                # Usamos la misma lógica de limpieza que para get_or_create_lot_folder_id
-                nombre_limpio = re.sub(r'[\\/*?:"<>|]', "", subapartado_titulo).strip()
-                expected_folders.add(nombre_limpio)
-    
-    if not expected_folders:
-        st.warning("El nuevo índice no contiene subapartados. No se realizó ninguna limpieza.")
-        return 0
 
     guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=parent_folder_id)
     existing_folders_map = list_project_folders(service, guiones_main_folder_id)
