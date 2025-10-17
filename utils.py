@@ -136,25 +136,27 @@ def convertir_excel_a_texto_csv(archivo_excel_bytes, nombre_archivo):
 def limpiar_respuesta_json(texto_sucio):
     """
     Limpia de forma muy agresiva la respuesta de texto de la IA para extraer un objeto JSON válido.
-    Busca el primer '{' y el último '}' en la cadena, ignorando todo lo demás.
+    Primero, busca un bloque de código JSON (```json ... ```). Si no lo encuentra,
+    busca el primer '{' y el último '}' en la cadena.
     """
     if not isinstance(texto_sucio, str):
         return ""
 
     try:
-        # Encuentra la posición del primer corchete de apertura
-        start_index = texto_sucio.find('{')
-        # Encuentra la posición del último corchete de cierre
-        end_index = texto_sucio.rfind('}')
-
-        # Si ambos se encuentran y están en el orden correcto
-        if start_index != -1 and end_index != -1 and end_index > start_index:
-            # Extrae la subcadena que contiene el JSON
-            json_str = texto_sucio[start_index:end_index + 1]
-            return json_str
+        # [NUEVO] Búsqueda mejorada que prioriza los bloques de código Markdown
+        # Esto es mucho más fiable para las respuestas de la API de Gemini
+        match = re.search(r'```(json)?\s*(\{.*?\})\s*```', texto_sucio, re.DOTALL)
+        if match:
+            # Si encuentra un bloque ```json {...}```, extrae el contenido del grupo 2, que es el JSON
+            return match.group(2)
         else:
-            # Si no se encuentra un JSON válido, devuelve una cadena vacía
-            return ""
+            # [LÓGICA ANTERIOR COMO RESPALDO] Si no hay bloque de código, usamos el método original
+            start_index = texto_sucio.find('{')
+            end_index = texto_sucio.rfind('}')
+            if start_index != -1 and end_index != -1 and end_index > start_index:
+                return texto_sucio[start_index:end_index + 1]
+            else:
+                return "" # No se encontró nada que parezca un JSON
     except Exception:
         # En caso de cualquier otro error, devuelve una cadena vacía
         return ""
