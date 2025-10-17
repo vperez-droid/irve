@@ -569,6 +569,8 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 st.error(f"Ocurrió un error durante el guardado: {e}")
 
 
+# En ui_pages.py, reemplaza tu función phase_3_page por esta versión definitiva:
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
@@ -579,6 +581,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         st.session_state.regenerating_item = None
     if 'uploader_key' not in st.session_state:
         st.session_state.uploader_key = 0
+    # Almacenará los resultados de la última clasificación para mostrarlos al usuario.
     if 'classification_results' not in st.session_state:
         st.session_state.classification_results = []
 
@@ -642,19 +645,20 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         )
         if st.button("🤖 Clasificar y Asignar Documentos", disabled=not context_files, type="primary"):
             if context_files:
-                st.session_state.classification_results = []
+                st.session_state.classification_results = [] # Limpiamos resultados anteriores
                 lista_titulos_subapartados = [matiz.get('subapartado') for matiz in subapartados_a_mostrar]
                 json_titulos = json.dumps(lista_titulos_subapartados, ensure_ascii=False)
                 progress_bar = st.progress(0, text="Iniciando clasificación...")
                 status_placeholder = st.empty()
+                
                 for i, file in enumerate(context_files):
                     file_name = file.name
                     progress_text = f"Procesando ({i+1}/{len(context_files)}): {file_name}"
                     progress_bar.progress((i + 1) / len(context_files), text=progress_text)
                     try:
-                        with status_placeholder.container():
+                        with status_placeholder.container(border=True):
                             st.write(f"Leyendo y extrayendo texto de `{file_name}`...")
-                            file.seek(0)
+                            file.seek(0) # Rebobinamos el archivo por si acaso
                             file_bytes = io.BytesIO(file.getvalue())
                             contenido_texto = ""
                             if file_name.lower().endswith('.xlsx'):
@@ -670,9 +674,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                             st.write(f"Enviando a la IA para clasificación...")
                             response = model.generate_content([
                                 PROMPT_CLASIFICAR_DOCUMENTO,
-                                "--- CONTENIDO DEL DOCUMENTO ---\n" + contenido_texto[:15000],
+                                "--- CONTENIDO DEL DOCUMENTO ---\n" + contenido_texto[:15000], # Limitamos para no exceder tokens
                                 "--- ÍNDICE DE SUBAPARTADOS ---\n" + json_titulos
                             ], generation_config={"response_mime_type": "application/json"})
+                            
                             json_limpio = limpiar_respuesta_json(response.text)
                             resultado = json.loads(json_limpio)
                             subapartado_destino = resultado.get("subapartado_seleccionado")
@@ -682,7 +687,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                                 nombre_limpio_carpeta = clean_folder_name(subapartado_destino)
                                 destino_folder_id = find_or_create_folder(service, nombre_limpio_carpeta, parent_id=guiones_folder_id)
-                                file.seek(0)
+                                file.seek(0) # Rebobinamos de nuevo antes de subir
                                 upload_file_to_drive(service, file, destino_folder_id)
                                 st.success(f"✅ `{file_name}` asignado a **{subapartado_destino}**.")
                                 st.session_state.classification_results.append({"filename": file_name, "destination": subapartado_destino})
@@ -696,9 +701,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 progress_bar.empty()
                 status_placeholder.empty()
                 st.toast("Proceso de clasificación finalizado.")
-                st.session_state.uploader_key += 1
+                st.session_state.uploader_key += 1 # Cambia la key del uploader para limpiarlo
                 st.rerun()
 
+    # --- [NUEVO] Muestra un resumen de la última clasificación realizada ---
     if st.session_state.classification_results:
         st.subheader("Resultados de la Última Clasificación")
         with st.container(border=True):
@@ -710,6 +716,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.rerun()
 
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
+    # (Estas funciones no necesitan cambios)
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
         nombre_limpio = clean_folder_name(titulo)
         nombre_archivo = nombre_limpio + ".docx"
@@ -837,16 +844,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     with st.spinner("Sincronizando guiones y archivos de contexto con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         
-        # --- [INICIO DE LA CORRECCIÓN] ---
-        # 1. Obtenemos TODOS los elementos (archivos y carpetas) de la carpeta principal de guiones
         all_items_in_guiones_folder = get_files_in_project(service, guiones_folder_id)
-
-        # 2. Y LUEGO filtramos la lista para quedarnos solo con las carpetas
         carpetas_existentes_response = [
             item for item in all_items_in_guiones_folder 
             if item['mimeType'] == 'application/vnd.google-apps.folder'
         ]
-        # --- [FIN DE LA CORRECCIÓN] ---
         
         subapartado_drive_data = {}
         for folder in carpetas_existentes_response:
