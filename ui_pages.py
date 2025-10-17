@@ -581,8 +581,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         st.session_state.regenerating_item = None
     if 'uploader_key' not in st.session_state:
         st.session_state.uploader_key = 0
-    # --- [MEJORA 1] ---
-    # Inicializamos el estado para guardar los resultados de la clasificación.
     if 'classification_results' not in st.session_state:
         st.session_state.classification_results = []
 
@@ -598,7 +596,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
 
     if 'generated_structure' not in st.session_state:
-        # ... (Lógica de carga del índice, sin cambios)
         st.info(f"Sincronizando índice ('{index_filename}') desde Google Drive...")
         try:
             saved_index_id = find_file_by_name(service, index_filename, index_folder_id)
@@ -616,7 +613,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     sync_guiones_folders_with_index(service, active_lot_folder_id, st.session_state.generated_structure)
 
     # --- 2. Preparación de datos para la UI ---
-    # ... (Lógica de preparación de datos, sin cambios)
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
@@ -648,22 +644,17 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         )
         if st.button("🤖 Clasificar y Asignar Documentos", disabled=not context_files, type="primary"):
             if context_files:
-                # --- [MEJORA 2] ---
-                # Limpiamos los resultados anteriores antes de empezar una nueva clasificación.
                 st.session_state.classification_results = []
-                
                 lista_titulos_subapartados = [matiz.get('subapartado') for matiz in subapartados_a_mostrar]
                 json_titulos = json.dumps(lista_titulos_subapartados, ensure_ascii=False)
                 progress_bar = st.progress(0, text="Iniciando clasificación...")
                 status_placeholder = st.empty()
-
                 for i, file in enumerate(context_files):
                     file_name = file.name
                     progress_text = f"Procesando ({i+1}/{len(context_files)}): {file_name}"
                     progress_bar.progress((i + 1) / len(context_files), text=progress_text)
                     try:
                         with status_placeholder.container():
-                            # ... (Lógica de extracción de texto, sin cambios)
                             st.write(f"Leyendo y extrayendo texto de `{file_name}`...")
                             file.seek(0)
                             file_bytes = io.BytesIO(file.getvalue())
@@ -678,7 +669,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 st.warning(f"El documento `{file_name}` está vacío o no se pudo leer. Se omitirá.")
                                 continue
 
-                            # ... (Lógica de llamada a la IA, sin cambios)
                             st.write(f"Enviando a la IA para clasificación...")
                             response = model.generate_content([
                                 PROMPT_CLASIFICAR_DOCUMENTO,
@@ -691,24 +681,19 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
                             if subapartado_destino and subapartado_destino != "inclasificable":
                                 st.write(f"Destino: '{subapartado_destino}'. Subiendo a Google Drive...")
-                                # ... (Lógica de subida a Drive, sin cambios)
                                 guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                                 nombre_limpio_carpeta = clean_folder_name(subapartado_destino)
                                 destino_folder_id = find_or_create_folder(service, nombre_limpio_carpeta, parent_id=guiones_folder_id)
                                 file.seek(0)
                                 upload_file_to_drive(service, file, destino_folder_id)
                                 st.success(f"✅ `{file_name}` asignado a **{subapartado_destino}**.")
-                                # --- [MEJORA 3] ---
-                                # Guardamos el resultado exitoso en el estado de la sesión.
                                 st.session_state.classification_results.append({"filename": file_name, "destination": subapartado_destino})
                             else:
                                 st.error(f"❌ No se pudo clasificar `{file_name}`. Revisa si su contenido es relevante.")
-                                # --- [MEJORA 4] ---
-                                # Guardamos también el resultado fallido para que el usuario lo vea.
                                 st.session_state.classification_results.append({"filename": file_name, "destination": "❌ Inclasificable"})
                     except Exception as e:
                         st.error(f"Ocurrió un error procesando `{file_name}`: {e}")
-                        st.session_state.classification_results.append({"filename": file_name, "destination": f"❌ Error: {e}"})
+                        st.session_state.classification_results.append({"filename": file_name, "destination": f"❌ Error"})
                 
                 progress_bar.empty()
                 status_placeholder.empty()
@@ -716,8 +701,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.session_state.uploader_key += 1
                 st.rerun()
 
-    # --- [MEJORA 5] ---
-    # Mostramos la tabla de resultados si hay algo que mostrar.
     if st.session_state.classification_results:
         st.subheader("Resultados de la Última Clasificación")
         with st.container(border=True):
@@ -728,11 +711,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.session_state.classification_results = []
                 st.rerun()
 
-    # --- El resto de la función (sección "Gestión de Guiones") no cambia ---
-    # Pega aquí el resto de la función desde "4. Funciones de Lógica Interna (Callbacks)"
-    # hasta el final. No es necesario modificarlo.
-    
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
+    # ... (El código de las funciones auxiliares como ejecutar_generacion_con_gemini no cambia) ...
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
         nombre_limpio = clean_folder_name(titulo)
         nombre_archivo = nombre_limpio + ".docx"
@@ -839,13 +819,35 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             except Exception as e: st.error(f"Ocurrió un error inesperado: {e}")
 
     # --- 5. Renderizado de la Interfaz de Usuario ---
-    with st.spinner("Sincronizando guiones con Google Drive..."):
+    st.markdown("---")
+    st.subheader("Gestión de Guiones de Subapartados")
+    
+    with st.spinner("Sincronizando guiones y archivos de contexto con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         carpetas_existentes_response = get_files_in_project(service, guiones_folder_id)
-        carpetas_de_guiones_existentes = {f['name']: f['id'] for f in carpetas_existentes_response if f['mimeType'] == 'application/vnd.google-apps.folder'}
-        nombres_carpetas_existentes = set(carpetas_de_guiones_existentes.keys())
+        
+        # --- [VISUALIZACIÓN 1] ---
+        # Creamos una estructura más rica para guardar no solo la carpeta, sino también su contenido.
+        subapartado_drive_data = {}
+        for folder in carpetas_existentes_response:
+            if folder['mimeType'] == 'application/vnd.google-apps.folder':
+                folder_name = folder['name']
+                folder_id = folder['id']
+                files_in_subfolder = get_files_in_project(service, folder_id)
+                
+                # Buscamos el guion principal (.docx)
+                script_file = next((f for f in files_in_subfolder if f['name'] == folder_name + ".docx"), None)
+                # Buscamos los archivos de contexto (todos los demás)
+                context_files = [f for f in files_in_subfolder if f != script_file]
 
-    st.subheader("Generación de Borradores en Lote")
+                subapartado_drive_data[folder_name] = {
+                    "folder_id": folder_id,
+                    "script_file": script_file,
+                    "context_files": context_files
+                }
+        
+    # Lógica de generación en lote (sin cambios)
+    nombres_carpetas_existentes = set(subapartado_drive_data.keys())
     pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if clean_folder_name(matiz.get('subapartado')) not in nombres_carpetas_existentes]
     
     def toggle_all_checkboxes():
@@ -853,12 +855,14 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         for key in pending_keys: st.session_state[f"cb_{key}"] = new_state
 
     with st.container(border=True):
+        st.subheader("Generación de Borradores en Lote")
         col_sel_1, col_sel_2 = st.columns([1, 2])
         with col_sel_1: st.checkbox("Seleccionar Todos / Ninguno", key="select_all_checkbox", on_change=toggle_all_checkboxes, disabled=not pending_keys)
         with col_sel_2:
             selected_keys = [key for key in pending_keys if st.session_state.get(f"cb_{key}")]
             num_selected = len(selected_keys)
             if st.button(f"🚀 Generar {num_selected} borradores seleccionados", type="primary", use_container_width=True, disabled=(num_selected == 0)):
+                # ... (Lógica del botón de lote, sin cambios)
                 progress_bar = st.progress(0, text="Iniciando generación en lote...")
                 items_to_generate = [matiz for matiz in subapartados_a_mostrar if matiz.get('subapartado') in selected_keys]
                 for i, matiz_a_generar in enumerate(items_to_generate):
@@ -869,7 +873,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons(); time.sleep(2); st.rerun()
 
     st.markdown("---")
-    st.subheader("Gestión de Guiones de Subapartados")
+    # El resto de la UI usa la nueva estructura `subapartado_drive_data`
     all_lot_folders = list_project_folders(service, project_folder_id)
     current_lot_clean_name = clean_folder_name(st.session_state.selected_lot)
     contexto_options = [name for name in all_lot_folders.keys() if name not in ["Pliegos", "Documentos aplicación", current_lot_clean_name]]
@@ -877,18 +881,26 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     for i, matiz in enumerate(subapartados_a_mostrar):
         subapartado_titulo = matiz.get('subapartado')
         if not subapartado_titulo: continue
+        
         nombre_limpio = clean_folder_name(subapartado_titulo)
-        if nombre_limpio in nombres_carpetas_existentes:
+        # --- [VISUALIZACIÓN 2] ---
+        # Usamos la nueva estructura para obtener los datos.
+        drive_data = subapartado_drive_data.get(nombre_limpio)
+        
+        if drive_data and drive_data.get("script_file"):
             estado = "📄 Generado"
-            subapartado_folder_id = carpetas_de_guiones_existentes[nombre_limpio]
-            files_in_subfolder = get_files_in_project(service, subapartado_folder_id)
-            file_info = next((f for f in files_in_subfolder if f['name'] == nombre_limpio + ".docx"), None)
+            file_info = drive_data["script_file"]
+            subapartado_folder_id = drive_data["folder_id"]
+            context_files_list = drive_data.get("context_files", [])
         else:
             estado = "⚪ No Generado"
             file_info, subapartado_folder_id = None, None
+            # Incluso si no está generado, puede tener archivos de contexto.
+            context_files_list = drive_data.get("context_files", []) if drive_data else []
         
         with st.container(border=True):
             if st.session_state.regenerating_item == subapartado_titulo:
+                # ... (Lógica de regeneración, sin cambios)
                 st.subheader(f"Re-generar: {subapartado_titulo}")
                 st.info("Revisa el borrador en Drive, luego escribe o pega tus indicaciones de mejora en el cuadro de abajo.")
                 feedback = st.text_area("Feedback para la IA:", height=200, key=f"feedback_text_area_{i}")
@@ -901,13 +913,22 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     if estado == "⚪ No Generado": st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
                     else: st.write(f"**{subapartado_titulo}**")
                     st.caption(f"Estado: {estado}")
+
+                    # --- [VISUALIZACIÓN 3] ---
+                    # Mostramos los archivos de contexto encontrados.
+                    if context_files_list:
+                        with st.expander(f"Ver {len(context_files_list)} archivo(s) de contexto asignados"):
+                            for ctx_file in context_files_list:
+                                st.info(f"📄 **{ctx_file['name']}**")
+                    
                     if estado == "⚪ No Generado" and contexto_options:
                          st.multiselect("Seleccionar lotes como contexto adicional:", options=contexto_options, key=f"context_{subapartado_titulo}", help="El contenido de los guiones de los lotes que selecciones se usará para dar más contexto a la IA.")
+                
                 with col2:
                     if estado == "📄 Generado" and file_info:
                         st.link_button("Revisar en Drive", f"https://docs.google.com/document/d/{file_info['id']}/edit", use_container_width=True)
                         st.button("Re-Generar con Feedback", key=f"regen_{i}", on_click=ejecutar_regeneracion, args=(subapartado_titulo,), type="primary", use_container_width=True)
-                        st.button("🗑️ Borrar", key=f"del_{i}", on_click=ejecutar_borrado, args=(subapartado_titulo, subapartado_folder_id), use_container_width=True)
+                        st.button("🗑️ Borrar Carpeta", key=f"del_{i}", on_click=ejecutar_borrado, args=(subapartado_titulo, subapartado_folder_id), use_container_width=True)
                     else:
                         if st.button("Generar Borrador", key=f"gen_{i}", use_container_width=True):
                             with st.spinner(f"Generando borrador para '{subapartado_titulo}'..."):
