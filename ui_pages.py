@@ -577,6 +577,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     # --- 1. Inicialización y Verificación de Sesión ---
     if 'regenerating_item' not in st.session_state:
         st.session_state.regenerating_item = None
+    
+    # --- [CORRECCIÓN 1] ---
+    # Inicializamos una clave única para el cargador de archivos.
+    if 'uploader_key' not in st.session_state:
+        st.session_state.uploader_key = 0
 
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
@@ -629,12 +634,16 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.subheader("Central de Documentos de Contexto")
     with st.container(border=True):
         st.info("Sube aquí TODOS los documentos de apoyo o contexto. La IA los clasificará y asignará al subapartado correcto automáticamente.")
+        
+        # --- [CORRECCIÓN 2] ---
+        # Usamos la clave dinámica que hemos creado.
         context_files = st.file_uploader(
             "Arrastra aquí tus archivos de contexto (PDF, Word, Excel)",
             type=['pdf', 'docx', 'xlsx'],
             accept_multiple_files=True,
-            key="central_context_uploader"
+            key=f"central_context_uploader_{st.session_state.uploader_key}"
         )
+
         if st.button("🤖 Clasificar y Asignar Documentos", disabled=not context_files, type="primary"):
             if context_files:
                 lista_titulos_subapartados = [matiz.get('subapartado') for matiz in subapartados_a_mostrar]
@@ -683,11 +692,20 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 st.error(f"❌ No se pudo clasificar `{file_name}`. Revisa si su contenido es relevante.")
                     except Exception as e:
                         st.error(f"Ocurrió un error procesando `{file_name}`: {e}")
+                
                 progress_bar.empty()
                 status_placeholder.empty()
                 st.toast("Proceso de clasificación finalizado.")
-                st.session_state.central_context_uploader = []
+                
+                # --- [CORRECCIÓN 3] ---
+                # En lugar de asignar [], cambiamos la clave e iniciamos un rerun.
+                st.session_state.uploader_key += 1
                 st.rerun()
+
+    # --- (El resto de la función `phase_3_page` no cambia) ---
+    # Pega aquí el resto de la función desde "4. Funciones de Lógica Interna (Callbacks)"
+    # hasta el final de la función, tal como estaba en la versión anterior.
+    # No es necesario que la vuelva a escribir toda aquí, ya que no ha cambiado.
 
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
@@ -790,7 +808,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     def ejecutar_borrado(titulo, folder_id_to_delete):
         with st.spinner(f"Eliminando guion para '{titulo}'..."):
             try:
-                # OJO: Borrar una carpeta en Drive también borra su contenido.
                 if delete_file_from_drive(service, folder_id_to_delete):
                     st.toast(f"Guion y contexto para '{titulo}' eliminados."); st.rerun()
                 else: st.error(f"No se pudo eliminar la carpeta '{titulo}'.")
