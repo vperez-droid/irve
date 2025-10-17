@@ -600,7 +600,35 @@ Ejemplo de respuesta si encuentras lotes (usando la palabra "Lote"):
 }
 """
 
+# Agrégalo al final de tu archivo prompts.py
 
+PROMPT_CLASIFICAR_DOCUMENTO = """
+Actúas como un bibliotecario de proyectos extremadamente organizado y preciso. Tu única tarea es clasificar un documento de contexto dentro de la estructura de una memoria técnica.
+
+Te proporcionaré DOS elementos:
+1.  **CONTENIDO DEL DOCUMENTO:** El texto extraído de un archivo que debo clasificar.
+2.  **ÍNDICE DE SUBAPARTADOS:** Una lista en formato JSON con los posibles subapartados donde el documento podría encajar.
+
+Tu misión es leer el contenido y devolver ÚNICAMENTE el nombre del subapartado más relevante de la lista proporcionada.
+
+## REGLAS ESTRICTAS:
+1.  **SALIDA ÚNICA:** Tu respuesta debe ser un objeto JSON válido, nada más. Ni texto introductorio, ni explicaciones.
+2.  **FORMATO JSON OBLIGATORIO:** El JSON debe contener una única clave: "subapartado_seleccionado". El valor debe ser el string exacto de uno de los títulos de la lista que te di.
+3.  **NO INVENTES:** Si ningún subapartado parece adecuado, devuelve el valor " inclasificable ". No elijas uno al azar.
+4.  **PRECISIÓN MÁXIMA:** Basa tu decisión en la coherencia temática entre el contenido del documento y el título del subapartado.
+
+## EJEMPLO DE FUNCIONAMIENTO:
+-   **CONTENIDO DEL DOCUMENTO:** "Este documento detalla el cronograma de entregas, con hitos clave en T1, T2 y T3..."
+-   **ÍNDICE DE SUBAPARTADOS:** `["1.1 Metodología Agile", "1.2 Plan de trabajo y cronograma", "1.3 Equipo del proyecto"]`
+-   **TU RESPUESTA CORRECTA:**
+    ```json
+    {
+      "subapartado_seleccionado": "1.2 Plan de trabajo y cronograma"
+    }
+    ```
+
+Ahora, clasifica el siguiente documento.
+"""
 
 
 
