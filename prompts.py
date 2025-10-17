@@ -602,34 +602,36 @@ Ejemplo de respuesta si encuentras lotes (usando la palabra "Lote"):
 
 # Agrégalo al final de tu archivo prompts.py
 
+# En tu archivo prompts.py, reemplaza el prompt existente por este:
+
 PROMPT_CLASIFICAR_DOCUMENTO = """
-Actúas como un bibliotecario de proyectos extremadamente organizado y preciso. Tu única tarea es clasificar un documento de contexto dentro de la estructura de una memoria técnica.
+# ROL Y CONTEXTO
+Eres un consultor experto ayudando a preparar una propuesta técnica para una licitación pública. Tu cliente te ha proporcionado varios documentos de apoyo.
 
-Te proporcionaré DOS elementos:
-1.  **CONTENIDO DEL DOCUMENTO:** El texto extraído de un archivo que debo clasificar.
-2.  **ÍNDICE DE SUBAPARTADOS:** Una lista en formato JSON con los posibles subapartados donde el documento podría encajar.
+# TAREA
+Tu tarea es analizar el contenido de un documento y decidir en cuál de los subapartados de la memoria técnica sería MÁS ÚTIL como fuente de inspiración, ejemplos, datos o material de apoyo para la persona que tiene que redactar esa sección.
 
-Tu misión es leer el contenido y devolver ÚNICAMENTE el nombre del subapartado más relevante de la lista proporcionada.
+# INSTRUCCIÓN CRÍTICA: PIENSA EN LA UTILIDAD, NO EN LA COINCIDENCIA EXACTA
+- El documento NO TIENE POR QUÉ hablar directamente del título del subapartado.
+- Tu objetivo no es encontrar una coincidencia literal, sino determinar DÓNDE APORTARÍA MÁS VALOR este documento.
+- Por ejemplo, un folleto de un evento navideño pasado con muchas actividades infantiles es EXTREMADAMENTE ÚTIL para el subapartado "2.3. Atracciones recreativas infantiles", ya que proporciona ejemplos concretos, aunque el folleto no mencione la palabra "atracción".
+- Del mismo modo, una propuesta económica de otro proyecto puede servir de inspiración para el apartado "3.1. Oferta económica".
 
-## REGLAS ESTRICTAS:
-1.  **SALIDA ÚNICA:** Tu respuesta debe ser un objeto JSON válido, nada más. Ni texto introductorio, ni explicaciones.
-2.  **FORMATO JSON OBLIGATORIO:** El JSON debe contener una única clave: "subapartado_seleccionado". El valor debe ser el string exacto de uno de los títulos de la lista que te di.
-3.  **NO INVENTES:** Si ningún subapartado parece adecuado, devuelve el valor " inclasificable ". No elijas uno al azar.
-4.  **PRECISIÓN MÁXIMA:** Basa tu decisión en la coherencia temática entre el contenido del documento y el título del subapartado.
+# ENTRADA
+Recibirás dos bloques de información:
+1. El contenido del documento a clasificar.
+2. La lista completa de subapartados de la memoria técnica en formato JSON.
 
-## EJEMPLO DE FUNCIONAMIENTO:
--   **CONTENIDO DEL DOCUMENTO:** "Este documento detalla el cronograma de entregas, con hitos clave en T1, T2 y T3..."
--   **ÍNDICE DE SUBAPARTADOS:** `["1.1 Metodología Agile", "1.2 Plan de trabajo y cronograma", "1.3 Equipo del proyecto"]`
--   **TU RESPUESTA CORRECTA:**
-    ```json
-    {
-      "subapartado_seleccionado": "1.2 Plan de trabajo y cronograma"
-    }
-    ```
+# SALIDA
+Tu respuesta DEBE ser un objeto JSON con una única clave "subapartado_seleccionado".
+- El valor debe ser EXACTAMENTE el string del título del subapartado que has elegido de la lista.
+- Si después de analizar su utilidad, consideras que el documento no aporta valor a NINGUNA sección, y solo en ese caso, devuelve "inclasificable".
 
-Ahora, clasifica el siguiente documento.
+Ejemplo de respuesta:
+{
+  "subapartado_seleccionado": "2.3. Atracciones recreativas infantiles"
+}
 """
-
 
 
 
