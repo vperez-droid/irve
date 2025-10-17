@@ -574,6 +574,8 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 
 # En ui_pages.py, reemplaza tu función phase_3_page por esta versión definitiva:
 
+# En tu archivo ui_pages.py, reemplaza tu función phase_3_page por esta versión definitiva:
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
@@ -584,7 +586,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         st.session_state.regenerating_item = None
     if 'uploader_key' not in st.session_state:
         st.session_state.uploader_key = 0
-    # Almacenará los resultados de la última clasificación para mostrarlos al usuario.
     if 'classification_results' not in st.session_state:
         st.session_state.classification_results = []
 
@@ -648,12 +649,16 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         )
         if st.button("🤖 Clasificar y Asignar Documentos", disabled=not context_files, type="primary"):
             if context_files:
-                st.session_state.classification_results = [] # Limpiamos resultados anteriores
+                st.session_state.classification_results = [] 
                 lista_titulos_subapartados = [matiz.get('subapartado') for matiz in subapartados_a_mostrar]
                 json_titulos = json.dumps(lista_titulos_subapartados, ensure_ascii=False)
                 progress_bar = st.progress(0, text="Iniciando clasificación...")
                 status_placeholder = st.empty()
                 
+                # [INICIO DE LA CORRECCIÓN] Importamos PdfReader aquí para usarlo
+                from pypdf import PdfReader
+                # [FIN DE LA CORRECCIÓN]
+
                 for i, file in enumerate(context_files):
                     file_name = file.name
                     progress_text = f"Procesando ({i+1}/{len(context_files)}): {file_name}"
@@ -661,7 +666,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     try:
                         with status_placeholder.container(border=True):
                             st.write(f"Leyendo y extrayendo texto de `{file_name}`...")
-                            file.seek(0) # Rebobinamos el archivo por si acaso
+                            file.seek(0)
                             file_bytes = io.BytesIO(file.getvalue())
                             contenido_texto = ""
                             if file_name.lower().endswith('.xlsx'):
@@ -670,6 +675,16 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 doc = docx.Document(file_bytes)
                                 contenido_texto = "\n".join([p.text for p in doc.paragraphs])
                             
+                            # =============================================================================
+                            #           [BLOQUE DE CÓDIGO AÑADIDO PARA LEER PDF]
+                            # =============================================================================
+                            elif file_name.lower().endswith('.pdf'):
+                                reader = PdfReader(file_bytes)
+                                for page in reader.pages:
+                                    # Añadimos el texto de cada página. Usamos 'or ""' por si una página está en blanco.
+                                    contenido_texto += (page.extract_text() or "")
+                            # =============================================================================
+                            
                             if not contenido_texto.strip():
                                 st.warning(f"El documento `{file_name}` está vacío o no se pudo leer. Se omitirá.")
                                 continue
@@ -677,7 +692,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                             st.write(f"Enviando a la IA para clasificación...")
                             response = model.generate_content([
                                 PROMPT_CLASIFICAR_DOCUMENTO,
-                                "--- CONTENIDO DEL DOCUMENTO ---\n" + contenido_texto[:15000], # Limitamos para no exceder tokens
+                                "--- CONTENIDO DEL DOCUMENTO ---\n" + contenido_texto[:15000], 
                                 "--- ÍNDICE DE SUBAPARTADOS ---\n" + json_titulos
                             ], generation_config={"response_mime_type": "application/json"})
                             
@@ -690,7 +705,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                                 nombre_limpio_carpeta = clean_folder_name(subapartado_destino)
                                 destino_folder_id = find_or_create_folder(service, nombre_limpio_carpeta, parent_id=guiones_folder_id)
-                                file.seek(0) # Rebobinamos de nuevo antes de subir
+                                file.seek(0)
                                 upload_file_to_drive(service, file, destino_folder_id)
                                 st.success(f"✅ `{file_name}` asignado a **{subapartado_destino}**.")
                                 st.session_state.classification_results.append({"filename": file_name, "destination": subapartado_destino})
@@ -704,10 +719,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 progress_bar.empty()
                 status_placeholder.empty()
                 st.toast("Proceso de clasificación finalizado.")
-                st.session_state.uploader_key += 1 # Cambia la key del uploader para limpiarlo
+                st.session_state.uploader_key += 1 
                 st.rerun()
 
-    # --- [NUEVO] Muestra un resumen de la última clasificación realizada ---
+    # Muestra un resumen de la última clasificación realizada
     if st.session_state.classification_results:
         st.subheader("Resultados de la Última Clasificación")
         with st.container(border=True):
@@ -718,8 +733,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.session_state.classification_results = []
                 st.rerun()
 
+    # --- El resto de la función (callbacks y UI) permanece sin cambios ---
+    # ... (pega aquí el resto de la función phase_3_page desde tu archivo original) ...
+    
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
-    # (Estas funciones no necesitan cambios)
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
         nombre_limpio = clean_folder_name(titulo)
         nombre_archivo = nombre_limpio + ".docx"
