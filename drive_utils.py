@@ -262,3 +262,44 @@ def get_context_from_lots(service, project_folder_id, context_lot_names):
     
     final_context_str += "\n--- FIN DEL CONTEXTO DE LOTES RELACIONADOS ---\n"
     return final_context_str
+
+# En drive_utils.py, añade esta función al final del archivo
+
+def sync_guiones_folders_with_index(service, active_lot_folder_id, index_structure):
+    """
+    Lee la estructura de un índice y crea las carpetas correspondientes para los guiones
+    en Google Drive si no existen.
+    """
+    try:
+        if not index_structure or 'estructura_memoria' not in index_structure:
+            print("Advertencia: La estructura del índice está vacía o es inválida. No se crearán carpetas.")
+            return
+
+        # 1. Asegurarse de que la carpeta principal "Guiones de Subapartados" existe
+        guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
+
+        estructura = index_structure.get('estructura_memoria', [])
+        
+        # 2. Determinar si el índice tiene subapartados o solo apartados principales
+        hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
+
+        if hay_subapartados:
+            # Si hay subapartados, crear una carpeta para cada uno
+            for seccion in estructura:
+                for subapartado_titulo in seccion.get('subapartados', []):
+                    if subapartado_titulo:
+                        folder_name = clean_folder_name(subapartado_titulo)
+                        find_or_create_folder(service, folder_name, parent_id=guiones_main_folder_id)
+        else:
+            # Si no hay subapartados, crear una carpeta para cada apartado principal
+            for seccion in estructura:
+                apartado_titulo = seccion.get('apartado')
+                if apartado_titulo:
+                    folder_name = clean_folder_name(apartado_titulo)
+                    find_or_create_folder(service, folder_name, parent_id=guiones_main_folder_id)
+        
+        print("Sincronización de carpetas completada con éxito.")
+
+    except Exception as e:
+        print(f"Error durante la sincronización de carpetas con el índice: {e}")
+        # En una app de Streamlit, podrías usar st.warning o st.error aquí.
