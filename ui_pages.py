@@ -569,10 +569,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 st.error(f"Ocurrió un error durante el guardado: {e}")
 
 
-# En ui_pages.py, reemplaza tu función phase_3_page por esta:
-
-# En ui_pages.py, reemplaza tu función phase_3_page por esta:
-
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
@@ -812,17 +808,13 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
     def ejecutar_regeneracion(titulo): st.session_state.regenerating_item = titulo; st.rerun()
     
-    # <-- [MODIFICADO] Se cambia el nombre para evitar confusión. Borra toda la carpeta del guion.
     def ejecutar_borrado_de_guion_completo(titulo, folder_id_to_delete):
         with st.spinner(f"Eliminando guion y contexto para '{titulo}'..."):
             try:
-                # La función de Drive debería borrar carpetas recursivamente si es necesario.
-                # Si no, habría que listar y borrar archivos primero. Asumimos que la utilidad lo maneja.
                 delete_file_from_drive(service, folder_id_to_delete)
                 st.toast(f"Carpeta del guion '{titulo}' eliminada."); st.rerun()
             except Exception as e: st.error(f"Ocurrió un error inesperado al borrar la carpeta: {e}")
 
-    # <-- [NUEVO] Función para borrar un único archivo de contexto.
     def handle_context_file_delete(file_id, file_name):
         with st.spinner(f"Eliminando archivo '{file_name}'..."):
             try:
@@ -831,7 +823,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             except Exception as e:
                 st.error(f"No se pudo eliminar el archivo: {e}")
 
-    # <-- [NUEVO] Función para subir archivos de contexto directamente a una carpeta.
     def handle_direct_context_upload(files, destination_folder_id):
         if files:
             with st.spinner(f"Subiendo {len(files)} archivo(s) de contexto..."):
@@ -845,18 +836,25 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     
     with st.spinner("Sincronizando guiones y archivos de contexto con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
-        carpetas_existentes_response = get_files_in_project(service, guiones_folder_id, mime_type='application/vnd.google-apps.folder')
         
-        # <-- [MODIFICADO] Creamos una estructura más rica para guardar no solo la carpeta, sino también su contenido.
+        # --- [INICIO DE LA CORRECCIÓN] ---
+        # 1. Obtenemos TODOS los elementos (archivos y carpetas) de la carpeta principal de guiones
+        all_items_in_guiones_folder = get_files_in_project(service, guiones_folder_id)
+
+        # 2. Y LUEGO filtramos la lista para quedarnos solo con las carpetas
+        carpetas_existentes_response = [
+            item for item in all_items_in_guiones_folder 
+            if item['mimeType'] == 'application/vnd.google-apps.folder'
+        ]
+        # --- [FIN DE LA CORRECCIÓN] ---
+        
         subapartado_drive_data = {}
         for folder in carpetas_existentes_response:
             folder_name = folder['name']
             folder_id = folder['id']
             files_in_subfolder = get_files_in_project(service, folder_id)
             
-            # Buscamos el guion principal (.docx)
             script_file = next((f for f in files_in_subfolder if f['name'] == folder_name + ".docx"), None)
-            # Buscamos los archivos de contexto (todos los demás)
             context_files = [f for f in files_in_subfolder if f != script_file]
 
             subapartado_drive_data[folder_name] = {
@@ -865,7 +863,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 "context_files": context_files
             }
         
-    # Lógica de generación en lote (sin cambios)
     nombres_carpetas_existentes = set(subapartado_drive_data.keys())
     pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if clean_folder_name(matiz.get('subapartado')) not in nombres_carpetas_existentes]
     
@@ -891,7 +888,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons(); time.sleep(2); st.rerun()
 
     st.markdown("---")
-    # El resto de la UI usa la nueva estructura `subapartado_drive_data`
     all_lot_folders = list_project_folders(service, project_folder_id)
     current_lot_clean_name = clean_folder_name(st.session_state.selected_lot)
     contexto_options = [name for name in all_lot_folders.keys() if name not in ["Pliegos", "Documentos aplicación", current_lot_clean_name]]
@@ -901,7 +897,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         if not subapartado_titulo: continue
         
         nombre_limpio = clean_folder_name(subapartado_titulo)
-        # <-- [MODIFICADO] Usamos la nueva estructura para obtener los datos.
         drive_data = subapartado_drive_data.get(nombre_limpio)
         
         if drive_data and drive_data.get("script_file"):
@@ -912,13 +907,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         else:
             estado = "⚪ No Generado"
             file_info = None
-            # Incluso si no está generado, puede tener carpeta y archivos de contexto.
             subapartado_folder_id = drive_data.get("folder_id") if drive_data else None
             context_files_list = drive_data.get("context_files", []) if drive_data else []
         
         with st.container(border=True):
             if st.session_state.regenerating_item == subapartado_titulo:
-                # Lógica de regeneración (sin cambios)
                 st.subheader(f"Re-generar: {subapartado_titulo}")
                 st.info("Revisa el borrador en Drive, luego escribe o pega tus indicaciones de mejora en el cuadro de abajo.")
                 feedback = st.text_area("Feedback para la IA:", height=200, key=f"feedback_text_area_{i}")
@@ -932,13 +925,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     else: st.write(f"**{subapartado_titulo}**")
                     st.caption(f"Estado: {estado}")
 
-                    # <-- [NUEVO] Sección para mostrar y gestionar el contexto.
                     num_context_files = len(context_files_list)
                     expander_title = f"Gestionar {num_context_files} archivo(s) de contexto" if num_context_files > 0 else "Añadir archivos de contexto"
                     
                     with st.expander(expander_title):
                         if not subapartado_folder_id:
-                             # Si no existe la carpeta, la creamos al vuelo para poder añadir contexto
                             if st.button("Crear carpeta para añadir contexto", key=f"create_folder_{i}"):
                                 guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                                 find_or_create_folder(service, nombre_limpio, parent_id=guiones_main_folder_id)
@@ -958,7 +949,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                             if new_context_files:
                                 st.button("Guardar en Drive", key=f"upload_ctx_{i}", on_click=handle_direct_context_upload, args=(new_context_files, subapartado_folder_id), type="primary")
 
-                    # Lógica para contexto cruzado entre lotes (sin cambios)
                     if estado == "⚪ No Generado" and contexto_options:
                          st.multiselect("Seleccionar lotes como contexto adicional:", options=contexto_options, key=f"context_{subapartado_titulo}", help="El contenido de los guiones de los lotes que selecciones se usará para dar más contexto a la IA.")
                 
@@ -982,6 +972,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     col_nav1, col_nav2 = st.columns(2)
     with col_nav1: st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
     with col_nav2: st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
+
 def phase_4_page(model, go_to_phase3, go_to_phase5):
     st.markdown("<h3>FASE 4: Centro de Mando de Prompts</h3>", unsafe_allow_html=True)
     st.markdown("Genera planes de prompts de forma individual o selecciónalos para procesarlos en lote.")
