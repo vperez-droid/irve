@@ -457,9 +457,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     "--- ESTRUCTURA JSON ANTERIOR A CORREGIR ---\n" + json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False)
                 ]
                 
-                # Se adjuntan los pliegos originales para contexto (mismo código que antes, no modificado)
                 if st.session_state.get('uploaded_pliegos'):
-                    # service = st.session_state.drive_service # Ya definido arriba
                     st.write("Analizando documentos de referencia para la regeneración...")
                     
                     for file_info in st.session_state.uploaded_pliegos:
@@ -478,7 +476,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 generation_config = genai.GenerationConfig(response_mime_type="application/json")
                 response_regeneracion = model.generate_content(contenido_ia_regeneracion, generation_config=generation_config)
                 
-                # ... (resto de la lógica de procesamiento de la respuesta de la IA) ...
                 if not response_regeneracion.candidates: st.error("La IA no generó una respuesta."); return
 
                 json_limpio_str_regenerado = limpiar_respuesta_json(response_regeneracion.text)
@@ -528,7 +525,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
             else: st.info("No se encontró un 'plan_extension' en la estructura generada.")
         else: st.warning("No se encontraron datos de 'configuracion_licitacion' o 'plan_extension' en la estructura generada por la IA.")
 
-    # --- 4. UI de Validación y Guardado (CORRECCIÓN APLICADA AQUÍ) ---
+    # --- 4. UI de Validación y Guardado (CON LA MODIFICACIÓN CLAVE) ---
     st.markdown("---")
     st.subheader("Validación y Siguiente Paso")
     
@@ -545,29 +542,35 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
         st.button("🔁 Regenerar Todo desde Cero", on_click=lambda: handle_full_regeneration(model), use_container_width=True, help="Descarta este análisis y genera uno nuevo leyendo los archivos desde cero.")
 
     if st.button("Aceptar y Pasar a Fase 3 →", type="primary", use_container_width=True):
-        with st.spinner("Guardando análisis final en Drive..."):
+        with st.spinner("Guardando análisis final y preparando carpetas..."):
             try:
-                # Obtener la carpeta y el nombre de archivo específicos
+                # 1. Guarda el índice como antes
                 index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
-
                 json_bytes = json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False).encode('utf-8')
                 mock_file_obj = io.BytesIO(json_bytes)
-                mock_file_obj.name = index_filename # <-- Nombre de archivo específico
+                mock_file_obj.name = index_filename
                 mock_file_obj.type = "application/json"
                 
-                # Buscar y eliminar la versión anterior
                 saved_index_id = find_file_by_name(service, index_filename, index_folder_id)
                 if saved_index_id:
                     delete_file_from_drive(service, saved_index_id)
                 
-                # Subir el nuevo archivo a la ubicación correcta
                 upload_file_to_drive(service, mock_file_obj, index_folder_id)
                 st.toast(f"Análisis final guardado como '{index_filename}' en tu Drive.")
+                
+                # --- [NUEVA LÓGICA AÑADIDA AQUÍ] ---
+                # 2. Inmediatamente después, crea la estructura de carpetas para la Fase 3
+                st.toast("Creando estructura de carpetas para los guiones...")
+                active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot)
+                sync_guiones_folders_with_index(service, active_lot_folder_id, st.session_state.generated_structure)
+                st.toast("¡Estructura de carpetas lista para la Fase 3!")
+                # --- [FIN DE LA NUEVA LÓGICA] ---
+
+                # 3. Continúa a la siguiente fase
                 go_to_phase3()
                 st.rerun()
             except Exception as e:
-                st.error(f"Ocurrió un error durante el guardado: {e}")
-
+                st.error(f"Ocurrió un error durante el guardado y la creación de carpetas: {e}")
 
 # En ui_pages.py, reemplaza tu función phase_3_page por esta versión definitiva:
 
