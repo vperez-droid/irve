@@ -569,6 +569,8 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 st.error(f"Ocurrió un error durante el guardado: {e}")
 
 
+# En ui_pages.py, reemplaza tu función phase_3_page por esta:
+
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
@@ -577,11 +579,12 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     # --- 1. Inicialización y Verificación de Sesión ---
     if 'regenerating_item' not in st.session_state:
         st.session_state.regenerating_item = None
-    
-    # --- [CORRECCIÓN 1] ---
-    # Inicializamos una clave única para el cargador de archivos.
     if 'uploader_key' not in st.session_state:
         st.session_state.uploader_key = 0
+    # --- [MEJORA 1] ---
+    # Inicializamos el estado para guardar los resultados de la clasificación.
+    if 'classification_results' not in st.session_state:
+        st.session_state.classification_results = []
 
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
@@ -595,6 +598,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
 
     if 'generated_structure' not in st.session_state:
+        # ... (Lógica de carga del índice, sin cambios)
         st.info(f"Sincronizando índice ('{index_filename}') desde Google Drive...")
         try:
             saved_index_id = find_file_by_name(service, index_filename, index_folder_id)
@@ -612,6 +616,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     sync_guiones_folders_with_index(service, active_lot_folder_id, st.session_state.generated_structure)
 
     # --- 2. Preparación de datos para la UI ---
+    # ... (Lógica de preparación de datos, sin cambios)
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
@@ -630,32 +635,35 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo: subapartados_a_mostrar.append({"apartado": apartado_titulo, "subapartado": apartado_titulo, "indicaciones": f"Generar guion para {apartado_titulo}"})
 
+
     # --- 3. Lógica de Clasificación y Subida Automática de Contexto ---
     st.subheader("Central de Documentos de Contexto")
     with st.container(border=True):
         st.info("Sube aquí TODOS los documentos de apoyo o contexto. La IA los clasificará y asignará al subapartado correcto automáticamente.")
-        
-        # --- [CORRECCIÓN 2] ---
-        # Usamos la clave dinámica que hemos creado.
         context_files = st.file_uploader(
             "Arrastra aquí tus archivos de contexto (PDF, Word, Excel)",
             type=['pdf', 'docx', 'xlsx'],
             accept_multiple_files=True,
             key=f"central_context_uploader_{st.session_state.uploader_key}"
         )
-
         if st.button("🤖 Clasificar y Asignar Documentos", disabled=not context_files, type="primary"):
             if context_files:
+                # --- [MEJORA 2] ---
+                # Limpiamos los resultados anteriores antes de empezar una nueva clasificación.
+                st.session_state.classification_results = []
+                
                 lista_titulos_subapartados = [matiz.get('subapartado') for matiz in subapartados_a_mostrar]
                 json_titulos = json.dumps(lista_titulos_subapartados, ensure_ascii=False)
                 progress_bar = st.progress(0, text="Iniciando clasificación...")
                 status_placeholder = st.empty()
+
                 for i, file in enumerate(context_files):
                     file_name = file.name
                     progress_text = f"Procesando ({i+1}/{len(context_files)}): {file_name}"
                     progress_bar.progress((i + 1) / len(context_files), text=progress_text)
                     try:
                         with status_placeholder.container():
+                            # ... (Lógica de extracción de texto, sin cambios)
                             st.write(f"Leyendo y extrayendo texto de `{file_name}`...")
                             file.seek(0)
                             file_bytes = io.BytesIO(file.getvalue())
@@ -670,6 +678,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 st.warning(f"El documento `{file_name}` está vacío o no se pudo leer. Se omitirá.")
                                 continue
 
+                            # ... (Lógica de llamada a la IA, sin cambios)
                             st.write(f"Enviando a la IA para clasificación...")
                             response = model.generate_content([
                                 PROMPT_CLASIFICAR_DOCUMENTO,
@@ -682,31 +691,47 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
                             if subapartado_destino and subapartado_destino != "inclasificable":
                                 st.write(f"Destino: '{subapartado_destino}'. Subiendo a Google Drive...")
+                                # ... (Lógica de subida a Drive, sin cambios)
                                 guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                                 nombre_limpio_carpeta = clean_folder_name(subapartado_destino)
                                 destino_folder_id = find_or_create_folder(service, nombre_limpio_carpeta, parent_id=guiones_folder_id)
                                 file.seek(0)
                                 upload_file_to_drive(service, file, destino_folder_id)
                                 st.success(f"✅ `{file_name}` asignado a **{subapartado_destino}**.")
+                                # --- [MEJORA 3] ---
+                                # Guardamos el resultado exitoso en el estado de la sesión.
+                                st.session_state.classification_results.append({"filename": file_name, "destination": subapartado_destino})
                             else:
                                 st.error(f"❌ No se pudo clasificar `{file_name}`. Revisa si su contenido es relevante.")
+                                # --- [MEJORA 4] ---
+                                # Guardamos también el resultado fallido para que el usuario lo vea.
+                                st.session_state.classification_results.append({"filename": file_name, "destination": "❌ Inclasificable"})
                     except Exception as e:
                         st.error(f"Ocurrió un error procesando `{file_name}`: {e}")
+                        st.session_state.classification_results.append({"filename": file_name, "destination": f"❌ Error: {e}"})
                 
                 progress_bar.empty()
                 status_placeholder.empty()
                 st.toast("Proceso de clasificación finalizado.")
-                
-                # --- [CORRECCIÓN 3] ---
-                # En lugar de asignar [], cambiamos la clave e iniciamos un rerun.
                 st.session_state.uploader_key += 1
                 st.rerun()
 
-    # --- (El resto de la función `phase_3_page` no cambia) ---
-    # Pega aquí el resto de la función desde "4. Funciones de Lógica Interna (Callbacks)"
-    # hasta el final de la función, tal como estaba en la versión anterior.
-    # No es necesario que la vuelva a escribir toda aquí, ya que no ha cambiado.
+    # --- [MEJORA 5] ---
+    # Mostramos la tabla de resultados si hay algo que mostrar.
+    if st.session_state.classification_results:
+        st.subheader("Resultados de la Última Clasificación")
+        with st.container(border=True):
+            df_results = pd.DataFrame(st.session_state.classification_results)
+            df_results.rename(columns={'filename': 'Archivo', 'destination': 'Subapartado Asignado'}, inplace=True)
+            st.dataframe(df_results, use_container_width=True, hide_index=True)
+            if st.button("Limpiar resultados", key="clear_results"):
+                st.session_state.classification_results = []
+                st.rerun()
 
+    # --- El resto de la función (sección "Gestión de Guiones") no cambia ---
+    # Pega aquí el resto de la función desde "4. Funciones de Lógica Interna (Callbacks)"
+    # hasta el final. No es necesario modificarlo.
+    
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
     def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
         nombre_limpio = clean_folder_name(titulo)
