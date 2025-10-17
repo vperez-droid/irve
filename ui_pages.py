@@ -339,7 +339,7 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
     with col1:
         if st.button("Cargar último índice generado", use_container_width=True, disabled=not saved_index_id):
             with st.spinner("Cargando índice desde Drive..."):
-                import download_file_from_drive # Importar si no está en el scope global
+                # LÍNEA CORREGIDA: Se eliminó el "import download_file_from_drive" erróneo que causaba el ModuleNotFoundError.
                 index_content_bytes = download_file_from_drive(service, saved_index_id)
                 index_data = json.loads(index_content_bytes.getvalue().decode('utf-8'))
                 st.session_state.generated_structure = index_data
