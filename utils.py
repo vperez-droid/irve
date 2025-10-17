@@ -30,18 +30,28 @@ CONTEXTO_LOTE_TEMPLATE = """
 """
 OPCION_ANALISIS_GENERAL = "Análisis general (no centrarse en un lote)"
 
+# En tu archivo utils.py, reemplaza la función get_lot_index_info completa por esta:
+
 def get_lot_index_info(service, project_folder_id, selected_lot):
     """
     Calcula el ID de la carpeta y el nombre de archivo específico para el índice.
-    Si selected_lot es OPCION_ANALISIS_GENERAL (o 'SIN_LOTES'), usa la carpeta de la aplicación
+    Si selected_lot es OPCION_ANALISIS_GENERAL, 'SIN_LOTES', o None, usa la carpeta de la aplicación
     del proyecto raíz y el nombre de archivo 'ultimo_indice.json'.
     Si es un lote, usa la carpeta de la aplicación DENTRO del lote y un nombre único.
     """
     
-    is_general_analysis = (selected_lot == OPCION_ANALISIS_GENERAL)
-    
+    # =============================================================================
+    #           [INICIO DE LA CORRECCIÓN]
+    # =============================================================================
+    # Se añade "or selected_lot is None" a la condición. Esto maneja el caso de error
+    # y lo trata de forma segura como un análisis general, evitando que la app se detenga.
+    is_general_analysis = (selected_lot == OPCION_ANALISIS_GENERAL or selected_lot is None)
+    # =============================================================================
+    #           [FIN DE LA CORRECCIÓN]
+    # =============================================================================
+
     if is_general_analysis:
-        # 1. Caso SIN LOTES (Comportamiento original)
+        # 1. Caso SIN LOTES (Comportamiento por defecto)
         # La carpeta de documentos de la app está a nivel de proyecto
         app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
         index_filename = "ultimo_indice.json"
@@ -54,16 +64,13 @@ def get_lot_index_info(service, project_folder_id, selected_lot):
         # La carpeta de documentos de la app está DENTRO de la carpeta del lote
         target_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=lot_folder_id)
         
-        # Generar el nombre de archivo (ej: Lote 1: Mercadillo temático... -> ultimo_indice_lote1)
-        # Se extrae la primera palabra y el primer número después de "Lote", o simplemente la primera palabra.
+        # Generar el nombre de archivo
         match = re.search(r'Lote\s*(\d+|\w+)', selected_lot, re.IGNORECASE)
         lot_suffix = match.group(1).replace(' ', '_') if match else clean_folder_name(selected_lot).split('_')[0]
         
         index_filename = f"ultimo_indice_lote{lot_suffix}.json"
 
     return target_folder_id, index_filename
-
-# ... (el resto del archivo es exactamente el mismo que proporcionaste) ...
 def get_lot_context():
     """Genera el texto de contexto para la IA si hay un lote seleccionado."""
     lote_seleccionado = st.session_state.get('selected_lot')
