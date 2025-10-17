@@ -1,5 +1,3 @@
-# utils.py (VERSIÓN COMPLETA Y CORREGIDA)
-
 import streamlit as st
 import re
 import os
@@ -12,8 +10,8 @@ import pandas as pd
 import time
 import google.api_core.exceptions
 
-# <-- ¡CORRECCIÓN AQUÍ! AÑADIMOS LA IMPORTACIÓN DE LAS FUNCIONES DE DRIVE
-from drive_utils import find_or_create_folder, get_or_create_lot_folder_id
+# <-- ¡CORRECCIÓN APLICADA AQUÍ! AÑADIMOS LA IMPORTACIÓN DE 'clean_folder_name'
+from drive_utils import find_or_create_folder, get_or_create_lot_folder_id, clean_folder_name
 
 # =============================================================================
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
@@ -30,8 +28,6 @@ CONTEXTO_LOTE_TEMPLATE = """
 """
 OPCION_ANALISIS_GENERAL = "Análisis general (no centrarse en un lote)"
 
-# En tu archivo utils.py, reemplaza la función get_lot_index_info completa por esta:
-
 def get_lot_index_info(service, project_folder_id, selected_lot):
     """
     Calcula el ID de la carpeta y el nombre de archivo específico para el índice.
@@ -39,38 +35,27 @@ def get_lot_index_info(service, project_folder_id, selected_lot):
     del proyecto raíz y el nombre de archivo 'ultimo_indice.json'.
     Si es un lote, usa la carpeta de la aplicación DENTRO del lote y un nombre único.
     """
-    
-    # =============================================================================
-    #           [INICIO DE LA CORRECCIÓN]
-    # =============================================================================
-    # Se añade "or selected_lot is None" a la condición. Esto maneja el caso de error
-    # y lo trata de forma segura como un análisis general, evitando que la app se detenga.
     is_general_analysis = (selected_lot == OPCION_ANALISIS_GENERAL or selected_lot is None)
-    # =============================================================================
-    #           [FIN DE LA CORRECCIÓN]
-    # =============================================================================
 
     if is_general_analysis:
         # 1. Caso SIN LOTES (Comportamiento por defecto)
-        # La carpeta de documentos de la app está a nivel de proyecto
         app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
         index_filename = "ultimo_indice.json"
         target_folder_id = app_folder_id
     else:
         # 2. Caso CON LOTES (Comportamiento por lote)
-        # La carpeta del lote está a nivel de proyecto
         lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot)
         
-        # La carpeta de documentos de la app está DENTRO de la carpeta del lote
         target_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=lot_folder_id)
         
-        # Generar el nombre de archivo
         match = re.search(r'Lote\s*(\d+|\w+)', selected_lot, re.IGNORECASE)
+        # Esta es la línea que antes fallaba. Ahora 'clean_folder_name' es reconocida.
         lot_suffix = match.group(1).replace(' ', '_') if match else clean_folder_name(selected_lot).split('_')[0]
         
         index_filename = f"ultimo_indice_lote{lot_suffix}.json"
 
     return target_folder_id, index_filename
+
 def get_lot_context():
     """Genera el texto de contexto para la IA si hay un lote seleccionado."""
     lote_seleccionado = st.session_state.get('selected_lot')
@@ -85,16 +70,14 @@ def enviar_mensaje_con_reintentos(chat, prompt_a_enviar, reintentos=5, delay=60)
     for i in range(reintentos):
         try:
             response = chat.send_message(prompt_a_enviar)
-            return response # Si tiene éxito, devuelve la respuesta y sale de la función
+            return response
         except google.api_core.exceptions.ResourceExhausted as e:
             st.warning(f"⚠️ Límite de la API alcanzado. Reintentando en {delay} segundos... ({i+1}/{reintentos})")
             time.sleep(delay)
         except Exception as e:
             st.error(f"Ocurrió un error inesperado al contactar la API: {e}")
-            # Para otros errores, podría ser mejor no reintentar, así que salimos.
             return None 
     
-    # Si el bucle termina sin éxito después de todos los reintentos
     st.error("No se pudo obtener una respuesta de la API después de varios intentos.")
     return None
     
@@ -102,31 +85,19 @@ def convertir_excel_a_texto_csv(archivo_excel_bytes, nombre_archivo):
     """
     Lee los bytes de un archivo Excel (.xlsx) y convierte todas sus hojas a una
     única cadena de texto en formato CSV.
-
-    Args:
-        archivo_excel_bytes (io.BytesIO): El contenido del archivo Excel en bytes.
-        nombre_archivo (str): El nombre original del archivo para dar contexto.
-
-    Returns:
-        str: Una cadena de texto con el contenido de todas las hojas en formato CSV.
     """
     try:
-        # Usamos pandas.ExcelFile para poder inspeccionar las hojas del archivo
         xls = pd.ExcelFile(archivo_excel_bytes)
         texto_final_csv = ""
 
-        # Si hay más de una hoja, iteramos sobre cada una
         if len(xls.sheet_names) > 1:
             texto_final_csv += f"--- Inicio del contenido del archivo Excel '{nombre_archivo}' (múltiples hojas) ---\n\n"
             for nombre_hoja in xls.sheet_names:
                 df = pd.read_excel(xls, sheet_name=nombre_hoja)
-                # Añadimos un encabezado para que la IA sepa de qué hoja vienen los datos
                 texto_final_csv += f"--- Contenido de la Hoja: '{nombre_hoja}' ---\n"
-                # Convertimos el DataFrame a un string CSV, sin el índice de pandas
                 texto_final_csv += df.to_csv(index=False)
                 texto_final_csv += "\n\n"
             texto_final_csv += f"--- Fin del contenido del archivo Excel '{nombre_archivo}' ---\n"
-        # Si solo hay una hoja, la procesamos directamente
         else:
             df = pd.read_excel(xls)
             texto_final_csv += f"--- Inicio del contenido del archivo Excel '{nombre_archivo}' ---\n"
@@ -136,56 +107,44 @@ def convertir_excel_a_texto_csv(archivo_excel_bytes, nombre_archivo):
         return texto_final_csv
 
     except Exception as e:
-        # Si algo falla, devolvemos un mensaje de error claro
         st.error(f"No se pudo procesar el archivo Excel '{nombre_archivo}': {e}")
         return ""
         
 def limpiar_respuesta_json(texto_sucio):
     """
     Limpia de forma muy agresiva la respuesta de texto de la IA para extraer un objeto JSON válido.
-    Primero, busca un bloque de código JSON (```json ... ```). Si no lo encuentra,
-    busca el primer '{' y el último '}' en la cadena.
     """
     if not isinstance(texto_sucio, str):
         return ""
 
     try:
-        # [NUEVO] Búsqueda mejorada que prioriza los bloques de código Markdown
-        # Esto es mucho más fiable para las respuestas de la API de Gemini
         match = re.search(r'```(json)?\s*(\{.*?\})\s*```', texto_sucio, re.DOTALL)
         if match:
-            # Si encuentra un bloque ```json {...}```, extrae el contenido del grupo 2, que es el JSON
             return match.group(2)
         else:
-            # [LÓGICA ANTERIOR COMO RESPALDO] Si no hay bloque de código, usamos el método original
             start_index = texto_sucio.find('{')
             end_index = texto_sucio.rfind('}')
             if start_index != -1 and end_index != -1 and end_index > start_index:
                 return texto_sucio[start_index:end_index + 1]
             else:
-                return "" # No se encontró nada que parezca un JSON
+                return ""
     except Exception:
-        # En caso de cualquier otro error, devuelve una cadena vacía
         return ""
 
 def limpiar_respuesta_final(texto_ia):
     """
-    Limpia de forma agresiva la respuesta de la IA para la redacción final,
-    eliminando meta-texto, explicaciones, y bloques de código.
+    Limpia de forma agresiva la respuesta de la IA para la redacción final.
     """
     if not isinstance(texto_ia, str):
         return ""
-    # Eliminar frases sobre la creación de diagramas o código
     texto_limpio = re.sub(r'Este código crea.*?visualizar el diagrama\.', '', texto_ia, flags=re.DOTALL | re.IGNORECASE)
     texto_limpio = re.sub(r'El código HTML proporcionado genera.*?aún más:', '', texto_limpio, flags=re.DOTALL | re.IGNORECASE)
-    # Eliminar bloques de código JSON o de otro tipo
     texto_limpio = re.sub(r'```(json|html|mermaid|text)?\s*.*?```', '', texto_limpio, flags=re.DOTALL)
-    # Eliminar frases introductorias comunes
     frases_a_eliminar = [
         r'^\s*Aquí tienes el contenido.*?:',
         r'^\s*Claro, aquí está la redacción para.*?:',
         r'^\s*A continuación se presenta el contenido detallado:',
-        r'^\s*##\s*.*?$' # Elimina cualquier título Markdown que la IA pueda repetir
+        r'^\s*##\s*.*?$'
     ]
     for patron in frases_a_eliminar:
         texto_limpio = re.sub(patron, '', texto_limpio, flags=re.IGNORECASE | re.MULTILINE)
@@ -194,8 +153,7 @@ def limpiar_respuesta_final(texto_ia):
 
 def corregir_numeracion_markdown(texto_markdown):
     """
-    Recorre un texto en Markdown y corrige las listas numeradas para que
-    sean consecutivas (1., 2., 3., etc.), independientemente de los números originales.
+    Recorre un texto en Markdown y corrige las listas numeradas para que sean consecutivas.
     """
     lineas_corregidas = []
     contador_lista = 0
@@ -223,7 +181,6 @@ def corregir_numeracion_markdown(texto_markdown):
 def natural_sort_key(s):
     """
     Crea una clave para el ordenamiento 'natural' de cadenas.
-    Ej: 'item 10' viene después de 'item 2'.
     """
     if not isinstance(s, str):
         return [s]
@@ -231,8 +188,7 @@ def natural_sort_key(s):
 
 def agregar_markdown_a_word(documento, texto_markdown):
     """
-    Convierte una cadena de texto en formato Markdown a un documento de Word,
-    manejando encabezados (#), listas (*, -), listas numeradas (1.) y negritas (**).
+    Convierte una cadena de texto en formato Markdown a un documento de Word.
     """
     patron_encabezado = re.compile(r'^(#+)\s+(.*)')
     patron_lista_numerada = re.compile(r'^\s*\d+\.\s+')
@@ -268,8 +224,7 @@ def agregar_markdown_a_word(documento, texto_markdown):
 
 def generar_indice_word(documento, estructura_memoria):
     """
-    Añade un índice (Tabla de Contenidos) al principio de un documento de Word
-    basado en la estructura de la memoria técnica.
+    Añade un índice (Tabla de Contenidos) al principio de un documento de Word.
     """
     documento.add_heading("Índice", level=1)
     if not estructura_memoria:
@@ -291,8 +246,7 @@ def generar_indice_word(documento, estructura_memoria):
 
 def mostrar_indice_desplegable(estructura, matices=None):
     """
-    Muestra una estructura de índice en Streamlit con apartados desplegables
-    y las indicaciones detalladas para cada subapartado.
+    Muestra una estructura de índice en Streamlit con apartados desplegables.
     """
     if not estructura:
         st.warning("La estructura de la memoria está vacía.")
@@ -315,7 +269,7 @@ def mostrar_indice_desplegable(estructura, matices=None):
                     if indicaciones:
                         with st.container(border=True):
                             st.info(indicaciones)
-                    st.write("") # Un pequeño espacio para separar
+                    st.write("")
 
 # =============================================================================
 #           FUNCIONES DE CONVERSIÓN HTML A IMAGEN
@@ -323,8 +277,7 @@ def mostrar_indice_desplegable(estructura, matices=None):
 
 def wrap_html_fragment(html_fragment):
     """
-    Envuelve un fragmento de HTML en una estructura completa con estilos CSS
-    para una correcta renderización a imagen.
+    Envuelve un fragmento de HTML en una estructura completa con estilos CSS.
     """
     if html_fragment.strip().startswith('<!DOCTYPE html>'):
         return html_fragment
@@ -351,7 +304,6 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
     Convierte una cadena de HTML en una imagen PNG usando wkhtmltoimage.
     """
     try:
-        # Busca wkhtmltoimage en el PATH del sistema (funciona en Streamlit Cloud)
         path_wkhtmltoimage = os.popen('which wkhtmltoimage').read().strip()
         if not path_wkhtmltoimage:
             st.error("❌ 'wkhtmltoimage' no encontrado. Asegúrate de que 'wkhtmltopdf' está en packages.txt.")
