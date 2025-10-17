@@ -110,6 +110,8 @@ def project_selection_page(go_to_landing, go_to_phase1):
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Lotes y Viabilidad</h3>", unsafe_allow_html=True)
     ANALYSIS_FILENAME = "Analisis_de_Viabilidad.docx"
+    # <-- [NUEVO] Nombre de archivo constante para guardar/cargar el resultado de los lotes
+    LOTES_FILENAME = "resultado_analisis_lotes.json"
 
     if not st.session_state.get('selected_project'):
         st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
@@ -140,10 +142,11 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.toast("¡Archivos subidos!"); st.rerun()
 
     st.markdown("---")
+    
+    # <-- [MODIFICADO] Se añade la lógica de guardado dentro de la función de detección
     def detectar_lotes():
         with st.spinner("Analizando documentos para detectar lotes..."):
             try:
-                # ... (resto de la función detectar_lotes es correcta) ...
                 contenido_ia = [PROMPT_DETECTAR_LOTES]
                 for file_info in documentos_pliegos:
                     file_bytes_io = download_file_from_drive(service, file_info['id'])
@@ -153,43 +156,97 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                         if texto_csv: contenido_ia.append(texto_csv)
                     else:
                         contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
+                
                 response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
                 json_limpio = limpiar_respuesta_json(response.text)
                 resultado = json.loads(json_limpio)
                 lotes = resultado.get("lotes_encontrados", [])
                 st.session_state.detected_lotes = lotes if lotes else ["SIN_LOTES"]
+
+                # <-- [NUEVO] Guardar el resultado en Google Drive para futuras sesiones
+                try:
+                    # La carpeta de documentos de la app está a nivel de proyecto para este archivo
+                    docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
+                    json_bytes = json.dumps(resultado, indent=2).encode('utf-8')
+                    mock_file = io.BytesIO(json_bytes)
+                    mock_file.name = LOTES_FILENAME
+                    mock_file.type = "application/json"
+                    
+                    # Sobrescribir el archivo anterior si existe
+                    existing_file_id = find_file_by_name(service, LOTES_FILENAME, docs_app_folder_id)
+                    if existing_file_id:
+                        delete_file_from_drive(service, existing_file_id)
+                    
+                    upload_file_to_drive(service, mock_file, docs_app_folder_id)
+                    st.toast("Resultado del análisis de lotes guardado en Drive.")
+                except Exception as e:
+                    st.warning(f"No se pudo guardar el resultado del análisis de lotes en Drive: {e}")
+
                 st.rerun()
             except Exception as e:
                 st.error(f"Ocurrió un error al detectar lotes: {e}")
 
     st.header("2. Selección de Lote")
-    # ... (toda la lógica de selección de lote es correcta) ...
+    
+    # <-- [NUEVO] Lógica para cargar el análisis de lotes guardado al iniciar la página
+    if 'detected_lotes' not in st.session_state:
+        st.session_state.detected_lotes = None
+
     if st.session_state.detected_lotes is None:
+        try:
+            # Buscamos el archivo de resultados a nivel de proyecto
+            docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
+            lotes_file_id = find_file_by_name(service, LOTES_FILENAME, docs_app_folder_id)
+            
+            if lotes_file_id:
+                with st.spinner("Cargando análisis de lotes guardado desde Drive..."):
+                    file_bytes = download_file_from_drive(service, lotes_file_id).getvalue()
+                    resultado = json.loads(file_bytes.decode('utf-8'))
+                    lotes = resultado.get("lotes_encontrados", [])
+                    st.session_state.detected_lotes = lotes if lotes else ["SIN_LOTES"]
+                    st.toast("Análisis de lotes cargado desde Drive.")
+                    st.rerun() # Volvemos a ejecutar para que la UI se actualice con los datos cargados
+        except Exception as e:
+            st.warning(f"No se pudo cargar el análisis de lotes guardado. Puede que necesites generarlo de nuevo. Error: {e}")
+            st.session_state.detected_lotes = "ERROR" # Para evitar reintentos infinitos
+
+    # <-- [MODIFICADO] La UI ahora depende de si `detected_lotes` se ha cargado o no
+    if st.session_state.detected_lotes is None or st.session_state.detected_lotes == "ERROR":
         st.info("Antes de analizar la viabilidad, la aplicación comprobará si la licitación está dividida en lotes.")
         st.button("Analizar Lotes en los Documentos", on_click=detectar_lotes, type="primary", use_container_width=True, disabled=not documentos_pliegos)
+    
     elif st.session_state.detected_lotes == ["SIN_LOTES"]:
         st.success("✔️ No se han detectado lotes en la documentación. Se realizará un análisis general.")
         if st.session_state.selected_lot is None:
             st.session_state.selected_lot = OPCION_ANALISIS_GENERAL
-    else:
+        st.button("🔄 Forzar Re-análisis de Lotes", on_click=detectar_lotes, help="Vuelve a analizar los documentos si has subido nuevos archivos.", use_container_width=True)
+
+    else: # Si se detectaron lotes
         st.success("¡Se han detectado lotes en la documentación!")
         if st.session_state.get('selected_lot') is None and st.session_state.detected_lotes:
             st.session_state.selected_lot = st.session_state.detected_lotes[0]
+        
         opciones_lotes = st.session_state.detected_lotes + [OPCION_ANALISIS_GENERAL]
         current_selection = st.session_state.get('selected_lot')
+        
         try:
             index = opciones_lotes.index(current_selection) if current_selection in opciones_lotes else 0
         except ValueError:
             index = 0
+            
         def on_lot_change():
             new_lot = st.session_state.lot_selector_key
             if st.session_state.get('selected_lot') != new_lot:
                 st.session_state.selected_lot = new_lot
-                if 'analysis_doc_id' in st.session_state:
-                    del st.session_state['analysis_doc_id']
+                if 'analysis_doc_id' in st.session_state: del st.session_state['analysis_doc_id']
                 st.toast(f"Lote cambiado a: {new_lot}")
-        st.selectbox("Elige el lote al que quieres presentarte o cámbialo si es necesario:", options=opciones_lotes, index=index, key="lot_selector_key", on_change=on_lot_change)
 
+        st.selectbox("Elige el lote al que quieres presentarte o cámbialo si es necesario:", options=opciones_lotes, index=index, key="lot_selector_key", on_change=on_lot_change)
+        st.button("🔄 Forzar Re-análisis de Lotes", on_click=detectar_lotes, help="Vuelve a analizar los documentos si has subido nuevos archivos.", use_container_width=True)
+
+
+    # El resto de la función (a partir de "if st.session_state.get('selected_lot') is not None:")
+    # no necesita ninguna modificación.
     if st.session_state.get('selected_lot') is not None:
         st.markdown("---")
         st.header("3. Extracción de Requisitos Clave")
@@ -199,21 +256,14 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         else:
              st.info("Se generará un análisis de viabilidad general.")
 
-        # --- ¡CORRECCIÓN APLICADA AQUÍ! ---
-        # 1. Obtenemos el lote seleccionado de la sesión
         selected_lot_name = st.session_state.get('selected_lot')
-        
-        # 2. Pasamos el nombre del lote como TERCER argumento a la función
         active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot_name)
-        
-        # 3. El resto del código continúa igual
         docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
         
         if 'analysis_doc_id' not in st.session_state:
             st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
 
         def generate_and_save_analysis():
-            # ... (la lógica interna de esta función es correcta) ...
             with st.spinner("🧠 Descargando y analizando documentos con Gemini..."):
                 try:
                     idioma = st.session_state.get('project_language', 'Español')
