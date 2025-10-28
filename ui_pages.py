@@ -886,7 +886,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             
             if st.button(f"🚀 Generar {num_selected} borradores en paralelo", type="primary", use_container_width=True, disabled=(num_selected == 0)):
                 items_to_generate = [matiz for matiz in subapartados_a_mostrar if matiz.get('subapartado') in selected_keys]
-                MAX_WORKERS = 2 # Reducido para mayor estabilidad en Streamlit Cloud
+                MAX_WORKERS = 4 # Reducido para mayor estabilidad en Streamlit Cloud
                 progress_bar = st.progress(0, text="Configurando generación en paralelo...")
                 st.info(f"Se generarán {num_selected} guiones usando hasta {MAX_WORKERS} hilos. Esto puede tardar varios minutos.")
                 completed_count = 0; all_successful = True
