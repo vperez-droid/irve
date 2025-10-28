@@ -1,5 +1,5 @@
 PROMPT_CONSULTOR_REVISION = """
-Actúas como un Consultor de Licitaciones Senior y redactor técnico experto, el mejor del mercado. Tu tarea es analizar el feedback de un cliente sobre un borrador y generar una versión mejorada que no solo corrija, sino que también proponga soluciones de alto valor.
+Tu tarea es analizar el feedback de un cliente sobre un borrador y generar una versión mejorada que no solo corrija, sino que también proponga soluciones de alto valor.
 {contexto_lote}
 Escribe el contenido solicitado en **idioma: {idioma}**.
 **ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
@@ -58,7 +58,6 @@ Escribe el contenido solicitado en **idioma: {idioma}**.
     - El objetivo de contenido para que este apartado sume a obtener la excelencia en la memoria técnica.
     - Cosas que no deben faltar en el apartado.
 
-## MEJORAS AÑADIDAS:
 - Responde SIEMPRE en formato JSON válido y bien estructurado. No incluyas texto fuera del objeto JSON.
 - No inventes información: solo utiliza lo que aparezca en la plantilla o en los pliegos.
 - Debes mostrar conocimiento de los pliegos, no puedes asumir que el que lee las intrucciones ya posee ese conociminento.
@@ -96,7 +95,6 @@ PROMPT_PLIEGOS = """
 {contexto_lote}
 
 # CONTEXTO
-Eres un asistente experto en la preparación de memorias técnicas para licitaciones públicas.
 Tu tarea es leer y comprender los documentos adjuntos (pliegos, plantillas, etc.) y generar una estructura detallada y ESTRATÉGICA en formato JSON.
 El idioma principal para la memoria es: {idioma}.
 
@@ -173,8 +171,7 @@ Ahora, analiza los documentos adjuntos y genera el objeto JSON completo, aplican
 """
 
 PROMPT_PREGUNTAS_TECNICAS = """
-Actúa como un planificador de licitación. Te quieres presentar a una licitación y debes crear un documento enfocando el contenido que aparecerá en este para que tus compañeros vean tu propuesta
-y la validen y complementen. Tu objetivo será crear una propuesta de contenido ganadora basándote en lo que se pide en los pliegos para que tus compañeros sólo den el ok
+Tu objetivo será crear una propuesta de contenido ganadora basándote en lo que se pide en los pliegos para que tus compañeros sólo den el ok
 y se pueda mandar el contenido a un redactor para que simplemente profundice en lo que tu has planteado. Esa "mini memoria técnica" será la que se le dará a un compañaero que se dedica a redactar.
 
 Escribe el contenido solicitado en **idioma: {idioma}**.
@@ -316,7 +313,7 @@ Your response must be a single, valid JSON object containing a list of prompts.
 """
 
 PROMPT_GENERAR_INTRODUCCION = """
-Actúas como un estratega experto en la redacción de propuestas de licitación. Tu tarea es escribir un apartado de **Introducción** conciso y persuasivo, basándote en el contenido completo de la memoria técnica que te proporcionaré.
+Tu tarea es escribir un apartado de **Introducción** conciso y persuasivo, basándote en el contenido completo de la memoria técnica que te proporcionaré.
 Escribe el contenido solicitado en **idioma: {idioma}**.
 **ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
 Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato relacionado con criterios económicos o evaluables por fórmula (precio, ofertas económicas, descuentos, reducción de plazos de entrega, ampliación de plazos de garantía, etc.). La memoria técnica solo debe contener información sobre juicios de valor. Cualquier mención a los criterios de fórmula es motivo de exclusión directa de la licitación. Céntrate únicamente en desarrollar los aspectos técnicos y de calidad solicitados.
