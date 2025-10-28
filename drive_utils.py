@@ -218,26 +218,34 @@ def get_context_from_lots(service, project_folder_id, context_lot_names):
 
     final_context_str = "\n\n--- INICIO DEL CONTEXTO DE LOTES RELACIONADOS ---\n"
     
+    # Usamos st.spinner aquí porque es una operación de cara al usuario
     with st.spinner(f"Cargando contexto desde {len(context_lot_names)} lote(s)..."):
-        # Usa las funciones cacheadas para acelerar la obtención de datos
-        all_project_folders = list_project_folders(service, project_folder_id)
+        # Obtiene una lista de todas las subcarpetas del proyecto de una vez
+        query = f"'{project_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+        response = service.files().list(q=query, spaces='drive', fields='files(id, name)').execute()
+        all_project_folders = {file['name']: file['id'] for file in response.get('files', [])}
         
         for lot_name in context_lot_names:
             clean_name = clean_folder_name(lot_name)
-            if clean_name in all_project_folders:
-                lot_folder_id = all_project_folders[clean_name]
+            lot_folder_id = all_project_folders.get(clean_name)
+            
+            if lot_folder_id:
                 guiones_folder_id = find_file_by_name(service, "Guiones de Subapartados", lot_folder_id)
                 
                 if guiones_folder_id:
-                    final_context_str += f"\n--- Contenido del '{lot_name}' ---\n"
-                    subapartado_folders = list_project_folders(service, guiones_folder_id)
+                    final_context_str += f"\n--- Contenido del Lote: '{lot_name}' ---\n"
+                    # Obtenemos las carpetas de los subapartados
+                    query_sub = f"'{guiones_folder_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+                    response_sub = service.files().list(q=query_sub, spaces='drive', fields='files(id, name)').execute()
+                    subapartado_folders = {file['name']: file['id'] for file in response_sub.get('files', [])}
                     
                     for sub_name, sub_id in subapartado_folders.items():
                         guion_files = get_files_in_project(service, sub_id)
                         docx_file = next((f for f in guion_files if f['name'].endswith('.docx')), None)
                         if docx_file:
-                            file_bytes = download_file_from_drive(service, docx_file['id'])
-                            # El servicio se pasa aquí también
+                            # -------- ¡AQUÍ ESTÁ LA CORRECCIÓN! --------
+                            # Se usa la función correcta que sí existe.
+                            file_bytes = download_file_from_drive_uncached(service, docx_file['id'])
                             texto = get_text_from_docx(service, file_bytes)
                             final_context_str += f"\n**Subapartado: {sub_name}**\n{texto}\n"
     
