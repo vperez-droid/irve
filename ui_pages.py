@@ -19,7 +19,7 @@ from prompts import (
 )
 from drive_utils import (
     find_or_create_folder, get_files_in_project, delete_file_from_drive,
-    upload_file_to_drive, find_file_by_name, download_file_from_drive,
+    upload_file_to_drive, find_file_by_name, download_file_from_drive_cached, download_file_from_drive_uncached,
     sync_guiones_folders_with_index, list_project_folders, ROOT_FOLDER_NAME,
     # <-- ¡NUEVO! Importamos las nuevas funciones de gestión de lotes
     get_or_create_lot_folder_id, clean_folder_name, get_context_from_lots
@@ -152,7 +152,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             try:
                 contenido_ia = [PROMPT_DETECTAR_LOTES]
                 for file_info in documentos_pliegos:
-                    file_bytes_io = download_file_from_drive(service, file_info['id'])
+                    file_bytes_io = download_file_from_drive_cached(service, file_info['id'])
                     nombre_archivo = file_info['name']
                     if nombre_archivo.lower().endswith('.xlsx'):
                         texto_csv = convertir_excel_a_texto_csv(file_bytes_io, nombre_archivo)
@@ -203,7 +203,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             
             if lotes_file_id:
                 with st.spinner("Cargando análisis de lotes guardado desde Drive..."):
-                    file_bytes = download_file_from_drive(service, lotes_file_id).getvalue()
+                    file_bytes = download_file_from_drive_cached(service, lotes_file_id).getvalue()
                     resultado = json.loads(file_bytes.decode('utf-8'))
                     lotes = resultado.get("lotes_encontrados", [])
                     st.session_state.detected_lotes = lotes if lotes else ["SIN_LOTES"]
@@ -274,7 +274,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     prompt = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma, contexto_lote=contexto_lote)
                     contenido_ia = [prompt]
                     for file_info in documentos_pliegos:
-                        file_bytes_io = download_file_from_drive(service, file_info['id'])
+                        file_bytes_io = download_file_from_drive_cached(service, file_info['id'])
                         nombre_archivo = file_info['name']
                         if nombre_archivo.lower().endswith('.xlsx'):
                             texto_csv = convertir_excel_a_texto_csv(file_bytes_io, nombre_archivo)
@@ -302,7 +302,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             st.success("✔️ Ya existe un análisis de viabilidad guardado para el lote seleccionado.")
             if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
                 with st.spinner("Descargando desde Drive..."):
-                    file_bytes = download_file_from_drive(service, st.session_state.analysis_doc_id)
+                    file_bytes = download_file_from_drive_cached(service, st.session_state.analysis_doc_id)
                     st.download_button(label="¡Listo! Haz clic aquí para descargar", data=file_bytes, file_name=ANALYSIS_FILENAME, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
             col1, col2 = st.columns(2)
             with col1:
@@ -393,7 +393,7 @@ def phase_2_structure_page(model, go_to_phase1, go_to_phase2_results, handle_ful
         if st.button("Cargar último índice generado", use_container_width=True, disabled=not saved_index_id):
             with st.spinner("Cargando índice desde Drive..."):
                 # LÍNEA CORREGIDA: Se eliminó el "import download_file_from_drive" erróneo que causaba el ModuleNotFoundError.
-                index_content_bytes = download_file_from_drive(service, saved_index_id)
+                index_content_bytes = download_file_from_drive_cached(service, saved_index_id)
                 index_data = json.loads(index_content_bytes.getvalue().decode('utf-8'))
                 st.session_state.generated_structure = index_data
                 st.session_state.uploaded_pliegos = document_files
@@ -464,7 +464,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                     st.write("Analizando documentos de referencia para la regeneración...")
                     
                     for file_info in st.session_state.uploaded_pliegos:
-                        file_content_bytes = download_file_from_drive(service, file_info['id'])
+                        file_content_bytes = download_file_from_drive_cached(service, file_info['id'])
                         nombre_archivo = file_info['name']
                         
                         if nombre_archivo.lower().endswith('.xlsx'):
@@ -578,22 +578,13 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 # En ui_pages.py, reemplaza tu función phase_3_page por esta versión definitiva:
 
 def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active_lot_folder_id, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
-    """
-    Ejecuta la generación de un guion para un subapartado específico usando la IA.
-    Crea su propia instancia de servicio de Drive para ser thread-safe.
-    """
-    from googleapiclient.discovery import build # Importar build aquí dentro
-
-    # --- INICIO DE LA MODIFICACIÓN CLAVE ---
-    # Cada hilo crea su propio objeto de servicio para evitar conflictos.
+    from googleapiclient.discovery import build
     service = build('drive', 'v3', credentials=credentials)
-    # --- FIN DE LA MODIFICACIÓN CLAVE ---
 
     nombre_limpio = clean_folder_name(titulo)
     nombre_archivo = nombre_limpio + ".docx"
     
     try:
-        # 1. Preparar carpetas y prompt inicial
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
         pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
@@ -602,44 +593,38 @@ def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active
         contexto_lote_actual = get_lot_context()
         prompt = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma, contexto_lote=contexto_lote_actual)
         
-        contenido_ia = [
-            prompt,
-            "--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False)
-        ]
+        contenido_ia = [prompt, "--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False)]
 
-        # 2. Añadir contexto de otros lotes si se proporcionó
         if contexto_adicional_lotes:
             contenido_ia.append(contexto_adicional_lotes)
 
-        # 3. Añadir el contenido de los Pliegos
         pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
         for file_info in pliegos_en_drive:
-            file_bytes_io = download_file_from_drive(service, file_info['id'])
+            # USA LA VERSIÓN SIN CACHÉ
+            file_bytes_io = download_file_from_drive_uncached(service, file_info['id'])
             if file_info['name'].lower().endswith('.xlsx'):
                 contenido_ia.append(convertir_excel_a_texto_csv(file_bytes_io, file_info['name']))
             else:
                 contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
 
-        # 4. Añadir documentos de apoyo específicos de este subapartado
         docs_de_apoyo = get_files_in_project(service, subapartado_guion_folder_id)
         docs_de_apoyo_filtrados = [f for f in docs_de_apoyo if not f['name'] == nombre_archivo]
         if docs_de_apoyo_filtrados:
             contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
             for uploaded_file_info in docs_de_apoyo_filtrados:
-                file_bytes_io_apoyo = download_file_from_drive(service, uploaded_file_info['id'])
+                # USA LA VERSIÓN SIN CACHÉ
+                file_bytes_io_apoyo = download_file_from_drive_uncached(service, uploaded_file_info['id'])
                 if uploaded_file_info['name'].lower().endswith('.xlsx'):
                     contenido_ia.append(convertir_excel_a_texto_csv(file_bytes_io_apoyo, uploaded_file_info['name']))
                 else:
                     contenido_ia.append({"mime_type": uploaded_file_info['mimeType'], "data": file_bytes_io_apoyo.getvalue()})
         
-        # 5. Ejecutar la llamada a la API y procesar la respuesta
         chat = model.start_chat()
         response = enviar_mensaje_con_reintentos(chat, contenido_ia)
         if not response or not response.candidates:
             print(f"ERROR: No se obtuvo respuesta válida de la API para '{titulo}'.")
             return False
         
-        # 6. Crear el documento Word y guardarlo en Drive
         documento = docx.Document()
         agregar_markdown_a_word(documento, response.text)
         doc_io = io.BytesIO()
@@ -656,9 +641,7 @@ def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active
         if show_toast: st.toast(f"Borrador para '{titulo}' generado y guardado.")
         return True
     except Exception as e:
-        # Imprimir el error en la consola de Streamlit para depuración
         print(f"ERROR en el hilo de generación para '{titulo}': {e}")
-        # Opcional: podrías usar st.error si no estuvieras en un hilo, pero print es más seguro aquí
         return False
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
@@ -686,7 +669,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         try:
             saved_index_id = find_file_by_name(service, index_filename, index_folder_id)
             if saved_index_id:
-                index_content_bytes = download_file_from_drive(service, saved_index_id)
+                index_content_bytes = download_file_from_drive_cached(service, saved_index_id)
                 st.session_state.generated_structure = json.loads(index_content_bytes.getvalue().decode('utf-8'))
                 st.rerun()
             else:
@@ -806,7 +789,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         if not feedback.strip(): st.warning("Por favor, introduce tu feedback para la re-generación."); return
         with st.spinner(f"Re-generando '{titulo}' con tu feedback..."):
             try:
-                borrador_bytes = download_file_from_drive(service, file_id_borrador)
+                borrador_bytes = download_file_from_drive_cached(service, file_id_borrador)
                 doc = docx.Document(io.BytesIO(borrador_bytes.getvalue()))
                 borrador_original_texto = "\n".join([p.text for p in doc.paragraphs])
                 pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
@@ -816,7 +799,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 prompt = PROMPT_CONSULTOR_REVISION.format(idioma=idioma, contexto_lote=contexto_lote_actual)
                 contenido_ia = [prompt, "--- BORRADOR ORIGINAL ---\n" + borrador_original_texto, "--- FEEDBACK DEL CLIENTE ---\n" + feedback]
                 for file_info in pliegos_en_drive:
-                    file_content_bytes = download_file_from_drive(service, file_info['id'])
+                    file_content_bytes = download_file_from_drive_cached(service, file_info['id'])
                     contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
 
                 response = model.generate_content(contenido_ia)
@@ -1034,7 +1017,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
         try:
             saved_index_id = find_file_by_name(service, index_filename, index_folder_id)
             if saved_index_id:
-                index_content_bytes = download_file_from_drive(service, saved_index_id)
+                index_content_bytes = download_file_from_drive_cached(service, saved_index_id)
                 st.session_state.generated_structure = json.loads(index_content_bytes.getvalue().decode('utf-8'))
                 st.rerun()
             else:
@@ -1105,7 +1088,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
             st.write(f"Analizando guion y docs de apoyo para '{subapartado_titulo}'...")
             for file_info in files_in_subfolder:
                 if file_info['name'].lower().endswith('.docx'):
-                    file_bytes = download_file_from_drive(service, file_info['id'])
+                    file_bytes = download_file_from_drive_cached(service, file_info['id'])
                     doc = docx.Document(io.BytesIO(file_bytes.getvalue()))
                     texto_doc = "\n".join([p.text for p in doc.paragraphs])
                     contexto_adicional_str += f"\n--- CONTENIDO DEL GUION ({file_info['name']}) ---\n{texto_doc}\n"
@@ -1162,7 +1145,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 for nombre_carpeta, folder_id in carpetas_de_guiones.items():
                     plan_id = find_file_by_name(service, "prompts_individual.json", folder_id)
                     if plan_id:
-                        json_bytes = download_file_from_drive(service, plan_id).getvalue()
+                        json_bytes = download_file_from_drive_cached(service, plan_id).getvalue()
                         plan_individual_obj = json.loads(json_bytes.decode('utf-8'))
                         prompts_de_este_plan = plan_individual_obj.get("plan_de_prompts", [])
                         plan_conjunto_final["plan_de_prompts"].extend(prompts_de_este_plan)
@@ -1252,7 +1235,7 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
                 elif plan_individual_id:
                     st.success("✔️ Plan generado")
                     with st.expander("Ver / Descargar Plan Individual"):
-                        json_bytes = download_file_from_drive(service, plan_individual_id).getvalue()
+                        json_bytes = download_file_from_drive_cached(service, plan_individual_id).getvalue()
                         st.json(json_bytes.decode('utf-8'))
                         st.download_button("Descargar JSON", data=json_bytes, file_name=f"prompts_{nombre_limpio}.json", mime="application/json", key=f"dl_{i}")
                 else:
@@ -1318,7 +1301,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         return
 
     try:
-        json_bytes = download_file_from_drive(service, plan_conjunto_id).getvalue()
+        json_bytes = download_file_from_drive_cached(service, plan_conjunto_id).getvalue()
         plan_de_accion = json.loads(json_bytes.decode('utf-8'))
         lista_de_prompts = plan_de_accion.get("plan_de_prompts", [])
         if lista_de_prompts:
