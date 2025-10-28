@@ -729,8 +729,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         )
         if st.button("🤖 Clasificar y Asignar Documentos", disabled=not context_files, type="primary"):
             if context_files:
-                from pypdf import PdfReader # Importación clave para leer PDFs
-                st.session_state.classification_results = [] 
+                from pypdf import PdfReader
+                st.session_state.classification_results = []
                 lista_titulos_subapartados = [matiz.get('subapartado') for matiz in subapartados_a_mostrar]
                 json_titulos = json.dumps(lista_titulos_subapartados, ensure_ascii=False)
                 progress_bar = st.progress(0, text="Iniciando clasificación...")
@@ -787,8 +787,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                         st.error(f"Ocurrió un error procesando `{file_name}`: {e}")
                         st.session_state.classification_results.append({"filename": file_name, "destination": f"❌ Error"})
                 
-                progress_bar.empty()
-                status_placeholder.empty()
+                progress_bar.empty(); status_placeholder.empty()
                 st.toast("Proceso de clasificación finalizado.")
                 st.session_state.uploader_key += 1 
                 st.rerun()
@@ -800,16 +799,13 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             df_results.rename(columns={'filename': 'Archivo', 'destination': 'Subapartado Asignado'}, inplace=True)
             st.dataframe(df_results, use_container_width=True, hide_index=True)
             if st.button("Limpiar resultados", key="clear_results"):
-                st.session_state.classification_results = []
-                st.rerun()
+                st.session_state.classification_results = []; st.rerun()
     
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
     def handle_confirm_regeneration(model, titulo, file_id_borrador, feedback):
-        if not feedback.strip():
-            st.warning("Por favor, introduce tu feedback para la re-generación."); return
+        if not feedback.strip(): st.warning("Por favor, introduce tu feedback para la re-generación."); return
         with st.spinner(f"Re-generando '{titulo}' con tu feedback..."):
             try:
-                # ... (resto de la lógica de regeneración, sin cambios)
                 borrador_bytes = download_file_from_drive(service, file_id_borrador)
                 doc = docx.Document(io.BytesIO(borrador_bytes.getvalue()))
                 borrador_original_texto = "\n".join([p.text for p in doc.paragraphs])
@@ -838,33 +834,25 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 delete_file_from_drive(service, file_id_borrador)
                 upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
                 st.toast(f"¡Guion para '{titulo}' re-generado con éxito!")
-                st.session_state.regenerating_item = None
-                st.rerun()
+                st.session_state.regenerating_item = None; st.rerun()
             except Exception as e:
-                st.error(f"Error crítico durante la re-generación: {e}")
-                st.session_state.regenerating_item = None
+                st.error(f"Error crítico durante la re-generación: {e}"); st.session_state.regenerating_item = None
     
     def ejecutar_regeneracion(titulo): st.session_state.regenerating_item = titulo; st.rerun()
-    
     def ejecutar_borrado_de_guion_completo(titulo, folder_id_to_delete):
         with st.spinner(f"Eliminando guion y contexto para '{titulo}'..."):
             try:
-                delete_file_from_drive(service, folder_id_to_delete)
-                st.toast(f"Carpeta del guion '{titulo}' eliminada."); st.rerun()
+                delete_file_from_drive(service, folder_id_to_delete); st.toast(f"Carpeta del guion '{titulo}' eliminada."); st.rerun()
             except Exception as e: st.error(f"Ocurrió un error inesperado al borrar la carpeta: {e}")
-
     def handle_context_file_delete(file_id, file_name):
         with st.spinner(f"Eliminando archivo '{file_name}'..."):
             try:
-                delete_file_from_drive(service, file_id)
-                st.toast(f"Archivo '{file_name}' eliminado."); st.rerun()
+                delete_file_from_drive(service, file_id); st.toast(f"Archivo '{file_name}' eliminado."); st.rerun()
             except Exception as e: st.error(f"No se pudo eliminar el archivo: {e}")
-
     def handle_direct_context_upload(files, destination_folder_id):
         if files:
             with st.spinner(f"Subiendo {len(files)} archivo(s) de contexto..."):
-                for file_obj in files:
-                    upload_file_to_drive(service, file_obj, destination_folder_id)
+                for file_obj in files: upload_file_to_drive(service, file_obj, destination_folder_id)
                 st.toast("Archivos de contexto añadidos."); st.rerun()
 
     # --- 5. Renderizado de la Interfaz de Usuario ---
@@ -874,7 +862,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     with st.spinner("Sincronizando guiones y archivos de contexto con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         carpetas_existentes = {f['name']: f['id'] for f in get_files_in_project(service, guiones_folder_id) if f['mimeType'] == 'application/vnd.google-apps.folder'}
-        
         guiones_generados_data = {}
         for nombre_carpeta, folder_id in carpetas_existentes.items():
             files_in_subfolder = get_files_in_project(service, folder_id)
@@ -899,57 +886,53 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             
             if st.button(f"🚀 Generar {num_selected} borradores en paralelo", type="primary", use_container_width=True, disabled=(num_selected == 0)):
                 items_to_generate = [matiz for matiz in subapartados_a_mostrar if matiz.get('subapartado') in selected_keys]
-                MAX_WORKERS = 4
-                
+                MAX_WORKERS = 2 # Reducido para mayor estabilidad en Streamlit Cloud
                 progress_bar = st.progress(0, text="Configurando generación en paralelo...")
                 st.info(f"Se generarán {num_selected} guiones usando hasta {MAX_WORKERS} hilos. Esto puede tardar varios minutos.")
-                
-                completed_count = 0
-                all_successful = True
+                completed_count = 0; all_successful = True
 
-                with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-                    future_to_matiz = {
-                        executor.submit(
-                            ejecutar_generacion_con_gemini, 
-                            model, service, project_folder_id, active_lot_folder_id,
-                            matiz.get('subapartado'), matiz, show_toast=False
-                        ): matiz for matiz in items_to_generate
-                    }
-
-                    for future in concurrent.futures.as_completed(future_to_matiz):
-                        matiz_info = future_to_matiz[future]
-                        titulo = matiz_info.get('subapartado', 'Desconocido')
-                        try:
-                            success = future.result()
-                            if not success:
-                                st.error(f"❌ Falló la generación para: {titulo}")
+                # --- INICIO DE LA MODIFICACIÓN DE LA LLAMADA EN LOTE ---
+                credentials = get_credentials()
+                if not credentials:
+                    st.error("Error de autenticación. No se puede iniciar la generación.")
+                else:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                        future_to_matiz = {
+                            executor.submit(
+                                ejecutar_generacion_con_gemini, 
+                                model, credentials, project_folder_id, active_lot_folder_id,
+                                matiz.get('subapartado'), matiz, "", show_toast=False
+                            ): matiz for matiz in items_to_generate
+                        }
+                        for future in concurrent.futures.as_completed(future_to_matiz):
+                            matiz_info = future_to_matiz[future]
+                            titulo = matiz_info.get('subapartado', 'Desconocido')
+                            try:
+                                success = future.result()
+                                if not success:
+                                    st.error(f"❌ Falló la generación para: {titulo}")
+                                    all_successful = False
+                            except Exception as exc:
+                                st.error(f"❌ Error crítico generando '{titulo}': {exc}")
                                 all_successful = False
-                        except Exception as exc:
-                            st.error(f"❌ Error crítico generando '{titulo}': {exc}")
-                            all_successful = False
-                        
-                        completed_count += 1
-                        progress_text = f"Completados {completed_count}/{num_selected}: {titulo}"
-                        progress_bar.progress(completed_count / num_selected, text=progress_text)
+                            completed_count += 1
+                            progress_text = f"Completados {completed_count}/{num_selected}: {titulo}"
+                            progress_bar.progress(completed_count / num_selected, text=progress_text)
+                # --- FIN DE LA MODIFICACIÓN DE LA LLAMADA EN LOTE ---
 
                 if all_successful:
-                    progress_bar.progress(1.0, text="¡Generación en lote completada!")
-                    st.success(f"{num_selected} borradores generados.")
-                    st.balloons()
+                    progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons()
                 else:
                     st.warning("Algunos guiones no se pudieron generar. Revisa la consola para más detalles.")
-                
-                time.sleep(4)
-                st.rerun()
+                time.sleep(4); st.rerun()
 
     st.markdown("---")
     for i, matiz in enumerate(subapartados_a_mostrar):
-        subapartado_titulo = matiz.get('subapartado')
+        subapartado_titulo = matiz.get('subapartado'); 
         if not subapartado_titulo: continue
         
         nombre_limpio = clean_folder_name(subapartado_titulo)
         drive_data = guiones_generados_data.get(nombre_limpio)
-        
         guion_generado = drive_data and drive_data.get("script")
         estado = "📄 Generado" if guion_generado else "⚪ No Generado"
         file_info = drive_data.get("script") if drive_data else None
@@ -959,11 +942,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         with st.container(border=True):
             col1, col2 = st.columns([2, 1])
             with col1:
-                if estado == "⚪ No Generado":
-                    st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
-                else:
-                    st.write(f"**{subapartado_titulo}**")
-                
+                if estado == "⚪ No Generado": st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
+                else: st.write(f"**{subapartado_titulo}**")
                 st.caption(f"Estado: {estado}")
 
                 num_context_files = len(context_files_list)
@@ -976,14 +956,11 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                             find_or_create_folder(service, nombre_limpio, parent_id=guiones_main_folder_id)
                             st.rerun()
                     else:
-                        if not context_files_list:
-                            st.info("No hay archivos de contexto asignados a este subapartado.")
-                        
+                        if not context_files_list: st.info("No hay archivos de contexto asignados a este subapartado.")
                         for ctx_file in context_files_list:
                             file_col1, file_col2 = st.columns([3, 1])
                             file_col1.write(f"📄 **{ctx_file['name']}**")
                             file_col2.button("Eliminar", key=f"del_ctx_{ctx_file['id']}", on_click=handle_context_file_delete, args=(ctx_file['id'], ctx_file['name']))
-                        
                         st.markdown("---")
                         st.write("**Añadir nuevos archivos de contexto aquí:**")
                         new_context_files = st.file_uploader("Sube uno o más archivos", accept_multiple_files=True, key=f"uploader_ctx_{i}")
@@ -1004,21 +981,25 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     if st.button("Generar Borrador", key=f"gen_{i}", use_container_width=True):
                         with st.spinner(f"Generando borrador para '{subapartado_titulo}'..."):
                             contexto_seleccionado = st.session_state.get(f"context_{subapartado_titulo}", [])
-                            context_str = ""
-                            if contexto_seleccionado:
-                                context_str = get_context_from_lots(service, project_folder_id, contexto_seleccionado)
+                            context_str = get_context_from_lots(service, project_folder_id, contexto_seleccionado) if contexto_seleccionado else ""
                             
-                            success = ejecutar_generacion_con_gemini(
-                                model=model,
-                                service=service,
-                                project_folder_id=project_folder_id,
-                                active_lot_folder_id=active_lot_folder_id,
-                                titulo=subapartado_titulo,
-                                indicaciones_completas=matiz,
-                                contexto_adicional_lotes=context_str
-                            )
-                            if success:
-                                st.rerun()
+                            # --- INICIO DE LA MODIFICACIÓN DE LA LLAMADA INDIVIDUAL ---
+                            credentials = get_credentials()
+                            if not credentials:
+                                st.error("Error de autenticación. Por favor, reinicia la sesión.")
+                            else:
+                                success = ejecutar_generacion_con_gemini(
+                                    model=model,
+                                    credentials=credentials,
+                                    project_folder_id=project_folder_id,
+                                    active_lot_folder_id=active_lot_folder_id,
+                                    titulo=subapartado_titulo,
+                                    indicaciones_completas=matiz,
+                                    contexto_adicional_lotes=context_str
+                                )
+                                if success:
+                                    st.rerun()
+                            # --- FIN DE LA MODIFICACIÓN DE LA LLAMADA INDIVIDUAL ---
 
     # --- 6. Navegación de la página ---
     st.markdown("---")
