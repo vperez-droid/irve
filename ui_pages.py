@@ -5,6 +5,7 @@ import io
 import re
 import os
 import time
+import concurrent.futures
 import docx
 import google.generativeai as genai
 
@@ -578,16 +579,13 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
-    st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote.")
+    st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote de forma paralela.")
     st.markdown("---")
 
     # --- 1. Inicialización y Verificación de Sesión ---
-    if 'regenerating_item' not in st.session_state:
-        st.session_state.regenerating_item = None
-    if 'uploader_key' not in st.session_state:
-        st.session_state.uploader_key = 0
-    if 'classification_results' not in st.session_state:
-        st.session_state.classification_results = []
+    if 'regenerating_item' not in st.session_state: st.session_state.regenerating_item = None
+    if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
+    if 'classification_results' not in st.session_state: st.session_state.classification_results = []
 
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
@@ -595,8 +593,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot)
 
     if not active_lot_folder_id:
-        st.warning("No se puede continuar sin un lote seleccionado.")
-        return
+        st.warning("No se puede continuar sin un lote seleccionado. Vuelve a la Fase 1."); return
 
     index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
 
@@ -635,7 +632,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         for seccion in estructura:
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo: subapartados_a_mostrar.append({"apartado": apartado_titulo, "subapartado": apartado_titulo, "indicaciones": f"Generar guion para {apartado_titulo}"})
-
 
     # --- 3. Lógica de Clasificación y Subida Automática de Contexto ---
     st.subheader("Central de Documentos de Contexto")
@@ -732,12 +728,9 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             if st.button("Limpiar resultados", key="clear_results"):
                 st.session_state.classification_results = []
                 st.rerun()
-
-    # --- El resto de la función (callbacks y UI) permanece sin cambios ---
-    # ... (pega aquí el resto de la función phase_3_page desde tu archivo original) ...
     
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
-    def ejecutar_generacion_con_gemini(model, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
+    def ejecutar_generacion_con_gemini(model, service, project_folder_id, active_lot_folder_id, titulo, indicaciones_completas, show_toast=True):
         nombre_limpio = clean_folder_name(titulo)
         nombre_archivo = nombre_limpio + ".docx"
         try:
@@ -748,39 +741,32 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             contexto_lote_actual = get_lot_context()
             prompt = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=idioma, contexto_lote=contexto_lote_actual)
             contenido_ia = [prompt, "--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False)]
-            if contexto_adicional_lotes:
-                contenido_ia.append(contexto_adicional_lotes)
-
             pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
-            st.write("Analizando documentos de 'Pliegos'...")
             for file_info in pliegos_en_drive:
                 file_bytes_io = download_file_from_drive(service, file_info['id'])
-                nombre_pliego = file_info['name']
-                if nombre_pliego.lower().endswith('.xlsx'):
-                    texto_csv = convertir_excel_a_texto_csv(file_bytes_io, nombre_pliego)
-                    if texto_csv: contenido_ia.append(texto_csv)
+                if file_info['name'].lower().endswith('.xlsx'):
+                    contenido_ia.append(convertir_excel_a_texto_csv(file_bytes_io, file_info['name']))
                 else:
                     contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
-
             docs_de_apoyo = get_files_in_project(service, subapartado_guion_folder_id)
             docs_de_apoyo_filtrados = [f for f in docs_de_apoyo if not f['name'] == nombre_archivo]
             if docs_de_apoyo_filtrados:
                 contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
-                st.write(f"Procesando {len(docs_de_apoyo_filtrados)} documento(s) de apoyo desde Drive...")
                 for uploaded_file_info in docs_de_apoyo_filtrados:
                     file_bytes_io_apoyo = download_file_from_drive(service, uploaded_file_info['id'])
-                    nombre_apoyo = uploaded_file_info['name']
-                    if nombre_apoyo.lower().endswith('.xlsx'):
-                        texto_csv_apoyo = convertir_excel_a_texto_csv(file_bytes_io_apoyo, nombre_apoyo)
-                        if texto_csv_apoyo: contenido_ia.append(texto_csv_apoyo)
+                    if uploaded_file_info['name'].lower().endswith('.xlsx'):
+                        contenido_ia.append(convertir_excel_a_texto_csv(file_bytes_io_apoyo, uploaded_file_info['name']))
                     else:
                         contenido_ia.append({"mime_type": uploaded_file_info['mimeType'], "data": file_bytes_io_apoyo.getvalue()})
-
-            response = model.generate_content(contenido_ia)
+            chat = model.start_chat()
+            response = enviar_mensaje_con_reintentos(chat, contenido_ia)
+            if not response or not response.candidates:
+                print(f"ERROR: No se obtuvo respuesta válida de la API para '{titulo}'.")
+                return False
             documento = docx.Document()
             agregar_markdown_a_word(documento, response.text)
             doc_io = io.BytesIO()
-            documento.save(doc_io)
+            documento.save(doc_io); doc_io.seek(0)
             word_file_obj = io.BytesIO(doc_io.getvalue())
             word_file_obj.name = nombre_archivo
             word_file_obj.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -790,7 +776,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             if show_toast: st.toast(f"Borrador para '{titulo}' generado y guardado.")
             return True
         except Exception as e:
-            st.error(f"Error al generar con Gemini para '{titulo}': {e}")
+            print(f"ERROR en el hilo de generación para '{titulo}': {e}")
             return False
 
     def handle_confirm_regeneration(model, titulo, file_id_borrador, feedback):
@@ -863,92 +849,98 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     
     with st.spinner("Sincronizando guiones y archivos de contexto con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
+        carpetas_existentes = {f['name']: f['id'] for f in get_files_in_project(service, guiones_folder_id) if f['mimeType'] == 'application/vnd.google-apps.folder'}
         
-        all_items_in_guiones_folder = get_files_in_project(service, guiones_folder_id)
-        carpetas_existentes_response = [
-            item for item in all_items_in_guiones_folder 
-            if item['mimeType'] == 'application/vnd.google-apps.folder'
-        ]
-        
-        subapartado_drive_data = {}
-        for folder in carpetas_existentes_response:
-            folder_name = folder['name']
-            folder_id = folder['id']
+        guiones_generados_data = {}
+        for nombre_carpeta, folder_id in carpetas_existentes.items():
             files_in_subfolder = get_files_in_project(service, folder_id)
-            
-            script_file = next((f for f in files_in_subfolder if f['name'] == folder_name + ".docx"), None)
+            script_file = next((f for f in files_in_subfolder if f['name'] == nombre_carpeta + ".docx"), None)
             context_files = [f for f in files_in_subfolder if f != script_file]
+            guiones_generados_data[nombre_carpeta] = {"script": script_file, "context": context_files, "folder_id": folder_id}
 
-            subapartado_drive_data[folder_name] = {
-                "folder_id": folder_id,
-                "script_file": script_file,
-                "context_files": context_files
-            }
-        
-    nombres_carpetas_existentes = set(subapartado_drive_data.keys())
-    pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if clean_folder_name(matiz.get('subapartado')) not in nombres_carpetas_existentes]
+    pending_keys = [matiz.get('subapartado') for matiz in subapartados_a_mostrar if clean_folder_name(matiz.get('subapartado')) not in guiones_generados_data or not guiones_generados_data[clean_folder_name(matiz.get('subapartado'))]['script']]
     
     def toggle_all_checkboxes():
         new_state = st.session_state.get('select_all_checkbox', False)
         for key in pending_keys: st.session_state[f"cb_{key}"] = new_state
 
     with st.container(border=True):
-        st.subheader("Generación de Borradores en Lote")
+        st.subheader("Generación de Borradores en Lote (Paralelo)")
         col_sel_1, col_sel_2 = st.columns([1, 2])
-        with col_sel_1: st.checkbox("Seleccionar Todos / Ninguno", key="select_all_checkbox", on_change=toggle_all_checkboxes, disabled=not pending_keys)
+        with col_sel_1:
+            st.checkbox("Seleccionar Todos / Ninguno", key="select_all_checkbox", on_change=toggle_all_checkboxes, disabled=not pending_keys)
         with col_sel_2:
             selected_keys = [key for key in pending_keys if st.session_state.get(f"cb_{key}")]
             num_selected = len(selected_keys)
-            if st.button(f"🚀 Generar {num_selected} borradores seleccionados", type="primary", use_container_width=True, disabled=(num_selected == 0)):
-                progress_bar = st.progress(0, text="Iniciando generación en lote...")
+            
+            if st.button(f"🚀 Generar {num_selected} borradores en paralelo", type="primary", use_container_width=True, disabled=(num_selected == 0)):
                 items_to_generate = [matiz for matiz in subapartados_a_mostrar if matiz.get('subapartado') in selected_keys]
-                for i, matiz_a_generar in enumerate(items_to_generate):
-                    titulo = matiz_a_generar.get('subapartado')
-                    progress_text = f"Generando ({i+1}/{num_selected}): {titulo}"
-                    progress_bar.progress((i + 1) / num_selected, text=progress_text)
-                    ejecutar_generacion_con_gemini(model, titulo, matiz_a_generar, show_toast=False)
-                progress_bar.progress(1.0, text="¡Generación en lote completada!"); st.success(f"{num_selected} borradores generados."); st.balloons(); time.sleep(2); st.rerun()
+                MAX_WORKERS = 4
+                
+                progress_bar = st.progress(0, text="Configurando generación en paralelo...")
+                st.info(f"Se generarán {num_selected} guiones usando hasta {MAX_WORKERS} hilos. Esto puede tardar varios minutos.")
+                
+                completed_count = 0
+                all_successful = True
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                    future_to_matiz = {
+                        executor.submit(
+                            ejecutar_generacion_con_gemini, 
+                            model, service, project_folder_id, active_lot_folder_id,
+                            matiz.get('subapartado'), matiz, show_toast=False
+                        ): matiz for matiz in items_to_generate
+                    }
+
+                    for future in concurrent.futures.as_completed(future_to_matiz):
+                        matiz_info = future_to_matiz[future]
+                        titulo = matiz_info.get('subapartado', 'Desconocido')
+                        try:
+                            success = future.result()
+                            if not success:
+                                st.error(f"❌ Falló la generación para: {titulo}")
+                                all_successful = False
+                        except Exception as exc:
+                            st.error(f"❌ Error crítico generando '{titulo}': {exc}")
+                            all_successful = False
+                        
+                        completed_count += 1
+                        progress_text = f"Completados {completed_count}/{num_selected}: {titulo}"
+                        progress_bar.progress(completed_count / num_selected, text=progress_text)
+
+                if all_successful:
+                    progress_bar.progress(1.0, text="¡Generación en lote completada!")
+                    st.success(f"{num_selected} borradores generados.")
+                    st.balloons()
+                else:
+                    st.warning("Algunos guiones no se pudieron generar. Revisa la consola para más detalles.")
+                
+                time.sleep(4)
+                st.rerun()
 
     st.markdown("---")
-    all_lot_folders = list_project_folders(service, project_folder_id)
-    current_lot_clean_name = clean_folder_name(st.session_state.selected_lot)
-    contexto_options = [name for name in all_lot_folders.keys() if name not in ["Pliegos", "Documentos aplicación", current_lot_clean_name]]
 
     for i, matiz in enumerate(subapartados_a_mostrar):
         subapartado_titulo = matiz.get('subapartado')
         if not subapartado_titulo: continue
         
         nombre_limpio = clean_folder_name(subapartado_titulo)
-        drive_data = subapartado_drive_data.get(nombre_limpio)
+        drive_data = guiones_generados_data.get(nombre_limpio)
         
-        if drive_data and drive_data.get("script_file"):
-            estado = "📄 Generado"
-            file_info = drive_data["script_file"]
-            subapartado_folder_id = drive_data["folder_id"]
-            context_files_list = drive_data.get("context_files", [])
-        else:
-            estado = "⚪ No Generado"
-            file_info = None
-            subapartado_folder_id = drive_data.get("folder_id") if drive_data else None
-            context_files_list = drive_data.get("context_files", []) if drive_data else []
+        guion_generado = drive_data and drive_data.get("script")
         
         with st.container(border=True):
-            if st.session_state.regenerating_item == subapartado_titulo:
-                st.subheader(f"Re-generar: {subapartado_titulo}")
-                st.info("Revisa el borrador en Drive, luego escribe o pega tus indicaciones de mejora en el cuadro de abajo.")
-                feedback = st.text_area("Feedback para la IA:", height=200, key=f"feedback_text_area_{i}")
-                col_regen1, col_regen2 = st.columns(2)
-                with col_regen1: st.button("✅ Confirmar y Re-generar", key=f"confirm_regen_{i}", on_click=handle_confirm_regeneration, args=(model, subapartado_titulo, file_info['id'], feedback), type="primary", use_container_width=True)
-                with col_regen2: st.button("❌ Cancelar", key=f"cancel_regen_{i}", on_click=lambda: setattr(st.session_state, 'regenerating_item', None), use_container_width=True)
-            else:
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    if estado == "⚪ No Generado": st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
-                    else: st.write(f"**{subapartado_titulo}**")
-                    st.caption(f"Estado: {estado}")
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                if not guion_generado:
+                    st.checkbox(f"**{subapartado_titulo}**", key=f"cb_{subapartado_titulo}")
+                else:
+                    st.write(f"**{subapartado_titulo}**")
+                
+                st.caption(f"Estado: {'📄 Generado' if guion_generado else '⚪ No Generado'}")
 
-                    num_context_files = len(context_files_list)
-                    expander_title = f"Gestionar {num_context_files} archivo(s) de contexto" if num_context_files > 0 else "Añadir archivos de contexto"
+                num_context_files = len(drive_data['context']) if drive_data else 0
+                expander_title = f"Gestionar {num_context_files} archivo(s) de contexto" if num_context_files > 0 else "Añadir archivos de contexto"
                     
                     with st.expander(expander_title):
                         if not subapartado_folder_id:
