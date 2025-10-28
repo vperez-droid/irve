@@ -605,11 +605,105 @@ def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active
         print(f"ERROR en el hilo de generación para '{titulo}': {e}")
         return False
 
-def phase_3_page(model, go_to_phase2_results, go_to_phase4):
+def ejecutar_fase_4_en_background(model, credentials, project_folder_id, active_lot_folder_id, all_matices, generated_structure, project_language):
+    """
+    Esta función orquesta toda la lógica de la Fase 4:
+    1. Genera todos los planes de prompts individuales en paralelo.
+    2. Unifica los resultados en un solo archivo JSON.
+    Devuelve True si todo fue exitoso, False si algo falló.
+    """
+    from googleapiclient.discovery import build
+    service = build('drive', 'v3', credentials=credentials)
+    
+    st.info("Iniciando la generación de todos los planes de prompts en paralelo...")
+    MAX_WORKERS = 4
+    completed_count = 0
+    all_successful = True
+    
+    # --- Parte 1: Generación en Paralelo de Prompts Individuales ---
+    guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
+    carpetas_de_guiones = list_project_folders(service, guiones_main_folder_id)
+    
+    items_to_generate = [
+        matiz for matiz in all_matices 
+        if clean_folder_name(matiz.get('subapartado')) in carpetas_de_guiones
+    ]
+    num_items = len(items_to_generate)
+    
+    if num_items == 0:
+        st.warning("No se encontraron guiones generados para crear planes de prompts. Asegúrate de generar los borradores primero.")
+        return False
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        future_to_matiz = {
+            executor.submit(
+                ejecutar_generacion_prompts_en_hilo, 
+                model, credentials, project_folder_id, active_lot_folder_id,
+                matiz, generated_structure, project_language
+            ): matiz for matiz in items_to_generate
+        }
+        
+        for future in concurrent.futures.as_completed(future_to_matiz):
+            matiz_info = future_to_matiz[future]
+            titulo = matiz_info.get('subapartado', 'Desconocido')
+            try:
+                success = future.result()
+                if not success:
+                    st.error(f"❌ Falló la generación del plan para: {titulo}")
+                    all_successful = False
+            except Exception as exc:
+                st.error(f"❌ Error crítico generando plan para '{titulo}': {exc}")
+                all_successful = False
+            
+            completed_count += 1
+            st.info(f"Planes de prompts completados: {completed_count}/{num_items} - {titulo}")
+
+    if not all_successful:
+        st.error("Algunos planes de prompts no se pudieron generar. El proceso se detendrá.")
+        return False
+
+    st.success("Todos los planes individuales han sido generados. Procediendo a la unificación...")
+
+    # --- Parte 2: Unificación de todos los JSONs ---
+    try:
+        plan_conjunto_final = {"plan_de_prompts": []}
+        carpetas_de_guiones_actualizadas = list_project_folders(service, guiones_main_folder_id)
+
+        for nombre_carpeta, folder_id in carpetas_de_guiones_actualizadas.items():
+            plan_id = find_file_by_name(service, "prompts_individual.json", folder_id)
+            if plan_id:
+                json_bytes = download_file_from_drive_uncached(service, plan_id).getvalue()
+                plan_individual_obj = json.loads(json_bytes.decode('utf-8'))
+                prompts_de_este_plan = plan_individual_obj.get("plan_de_prompts", [])
+                plan_conjunto_final["plan_de_prompts"].extend(prompts_de_este_plan)
+        
+        if not plan_conjunto_final["plan_de_prompts"]:
+            st.warning("No se encontraron planes para unificar, aunque la generación pareció exitosa.")
+            return False
+            
+        lot_docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
+        lot_name_clean = clean_folder_name(st.session_state.selected_lot)
+        nombre_archivo_final = f"plan_de_prompts_{lot_name_clean}.json"
+        
+        json_bytes_finales = json.dumps(plan_conjunto_final, indent=2, ensure_ascii=False).encode('utf-8')
+        mock_file_obj = io.BytesIO(json_bytes_finales); mock_file_obj.name = nombre_archivo_final; mock_file_obj.type = "application/json"
+        
+        old_conjunto_id = find_file_by_name(service, nombre_archivo_final, lot_docs_app_folder_id)
+        if old_conjunto_id: delete_file_from_drive(service, old_conjunto_id)
+        
+        upload_file_to_drive(service, mock_file_obj, lot_docs_app_folder_id)
+        st.success(f"¡Plan conjunto para '{st.session_state.selected_lot}' generado! Total: {len(plan_conjunto_final['plan_de_prompts'])} prompts.")
+        return True
+    except Exception as e:
+        st.error(f"Ocurrió un error crítico durante la unificación de los planes: {e}")
+        return False
+
+def phase_3_page(model, go_to_phase2_results, go_to_phase5):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
-    st.markdown("Gestiona tus guiones de forma individual o selecciónalos para generarlos en lote de forma paralela.")
+    st.markdown("Gestiona tus guiones y documentos de apoyo. Desde aquí lanzarás el proceso final de preparación para la redacción.")
     st.markdown("---")
 
+    # --- 1. Inicialización y Verificación de Sesión ---
     if 'regenerating_item' not in st.session_state: st.session_state.regenerating_item = None
     if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
     if 'classification_results' not in st.session_state: st.session_state.classification_results = []
@@ -641,6 +735,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
     sync_guiones_folders_with_index(service, active_lot_folder_id, st.session_state.generated_structure)
 
+    # --- 2. Preparación de datos para la UI ---
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
     matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
@@ -659,18 +754,18 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo: subapartados_a_mostrar.append({"apartado": apartado_titulo, "subapartado": apartado_titulo, "indicaciones": f"Generar guion para {apartado_titulo}"})
 
+    # --- 3. Lógica de Clasificación y Subida Automática de Contexto (LÓGICA ACTUALIZADA) ---
     st.subheader("Central de Documentos de Contexto")
     with st.container(border=True):
-        st.info("Sube aquí TODOS los documentos de apoyo o contexto. La IA los clasificará y asignará al subapartado correcto automáticamente.")
+        st.info("Sube aquí TODOS los documentos de apoyo o contexto (PDFs, Word con imágenes, Excel, etc.). La IA los analizará y asignará al subapartado correcto automáticamente.")
         context_files = st.file_uploader(
-            "Arrastra aquí tus archivos de contexto (PDF, Word, Excel)",
+            "Arrastra aquí tus archivos de contexto",
             type=['pdf', 'docx', 'xlsx'],
             accept_multiple_files=True,
             key=f"central_context_uploader_{st.session_state.uploader_key}"
         )
         if st.button("🤖 Clasificar y Asignar Documentos", disabled=not context_files, type="primary"):
             if context_files:
-                from pypdf import PdfReader
                 st.session_state.classification_results = []
                 lista_titulos_subapartados = [matiz.get('subapartado') for matiz in subapartados_a_mostrar]
                 json_titulos = json.dumps(lista_titulos_subapartados, ensure_ascii=False)
@@ -681,32 +776,28 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     file_name = file.name
                     progress_text = f"Procesando ({i+1}/{len(context_files)}): {file_name}"
                     progress_bar.progress((i + 1) / len(context_files), text=progress_text)
+                    
                     try:
                         with status_placeholder.container(border=True):
-                            st.write(f"Leyendo y extrayendo texto de `{file_name}`...")
-                            file.seek(0)
-                            file_bytes = io.BytesIO(file.getvalue())
-                            contenido_texto = ""
-                            if file_name.lower().endswith('.xlsx'):
-                                contenido_texto = convertir_excel_a_texto_csv(file_bytes, file_name)
-                            elif file_name.lower().endswith('.docx'):
-                                doc = docx.Document(file_bytes)
-                                contenido_texto = "\n".join([p.text for p in doc.paragraphs])
-                            elif file_name.lower().endswith('.pdf'):
-                                reader = PdfReader(file_bytes)
-                                for page in reader.pages:
-                                    contenido_texto += (page.extract_text() or "")
+                            st.write(f"Analizando archivo completo: `{file_name}`...")
                             
-                            if not contenido_texto.strip():
-                                st.warning(f"El documento `{file_name}` está vacío o no se pudo leer. Se omitirá.")
-                                continue
-
-                            st.write(f"Enviando a la IA para clasificación...")
-                            response = model.generate_content([
+                            file.seek(0)
+                            file_bytes = file.getvalue()
+                            mime_type = file.type
+                            
+                            contenido_para_gemini = [
                                 PROMPT_CLASIFICAR_DOCUMENTO,
-                                "--- CONTENIDO DEL DOCUMENTO ---\n" + contenido_texto[:15000], 
-                                "--- ÍNDICE DE SUBAPARTADOS ---\n" + json_titulos
-                            ], generation_config={"response_mime_type": "application/json"})
+                                "--- CONTENIDO DEL DOCUMENTO A CLASIFICAR ---",
+                                {"mime_type": mime_type, "data": file_bytes},
+                                "--- ÍNDICE DE SUBAPARTADOS DISPONIBLES ---",
+                                json_titulos
+                            ]
+
+                            st.write(f"Enviando archivo ({mime_type}) a la IA para clasificación...")
+                            response = model.generate_content(
+                                contenido_para_gemini,
+                                generation_config={"response_mime_type": "application/json"}
+                            )
                             
                             json_limpio = limpiar_respuesta_json(response.text)
                             resultado = json.loads(json_limpio)
@@ -724,6 +815,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                             else:
                                 st.error(f"❌ No se pudo clasificar `{file_name}`. Revisa si su contenido es relevante.")
                                 st.session_state.classification_results.append({"filename": file_name, "destination": "❌ Inclasificable"})
+
                     except Exception as e:
                         st.error(f"Ocurrió un error procesando `{file_name}`: {e}")
                         st.session_state.classification_results.append({"filename": file_name, "destination": f"❌ Error"})
@@ -742,7 +834,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             if st.button("Limpiar resultados", key="clear_results"):
                 st.session_state.classification_results = []; st.rerun()
     
-    def handle_confirm_regeneration(model, titulo, file_id_borrador, feedback):
+    # --- 4. Funciones de Lógica Interna (Callbacks) ---
+    def handle_confirm_regeneration(titulo, file_id_borrador, feedback):
         if not feedback.strip(): st.warning("Por favor, introduce tu feedback para la re-generación."); return
         with st.spinner(f"Re-generando '{titulo}' con tu feedback..."):
             try:
@@ -754,13 +847,20 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 idioma = st.session_state.get('project_language', 'Español')
                 contexto_lote_actual = get_lot_context()
                 prompt = PROMPT_CONSULTOR_REVISION.format(idioma=idioma, contexto_lote=contexto_lote_actual)
-                contenido_ia = [prompt, "--- BORRADOR ORIGINAL ---\n" + borrador_original_texto, "--- FEEDBACK DEL CLIENTE ---\n" + feedback]
+                
+                contenido_ia = [
+                    prompt, 
+                    "--- BORRADOR ORIGINAL ---\n" + borrador_original_texto, 
+                    "--- FEEDBACK DEL CLIENTE (Tus correcciones y comentarios) ---\n" + feedback
+                ]
+                
                 for file_info in pliegos_en_drive:
                     file_content_bytes = download_file_from_drive_cached(service, file_info['id'])
                     contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
 
                 response = model.generate_content(contenido_ia)
                 if not response.candidates: st.error("La IA no generó una respuesta para la re-generación."); return
+                
                 documento_nuevo = docx.Document()
                 agregar_markdown_a_word(documento_nuevo, response.text)
                 doc_io = io.BytesIO(); documento_nuevo.save(doc_io)
@@ -769,8 +869,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 nombre_archivo = nombre_limpio + ".docx"
                 word_file_obj.name = nombre_archivo
                 word_file_obj.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                
                 guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
                 subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
+                
                 delete_file_from_drive(service, file_id_borrador)
                 upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
                 st.toast(f"¡Guion para '{titulo}' re-generado con éxito!")
@@ -778,7 +880,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             except Exception as e:
                 st.error(f"Error crítico durante la re-generación: {e}"); st.session_state.regenerating_item = None
     
-    def ejecutar_regeneracion(titulo): st.session_state.regenerating_item = titulo; st.rerun()
+    def ejecutar_regeneracion(titulo): st.session_state.regenerating_item = titulo
+    def cancelar_regeneracion(): st.session_state.regenerating_item = None
     def ejecutar_borrado_de_guion_completo(titulo, folder_id_to_delete):
         with st.spinner(f"Eliminando guion y contexto para '{titulo}'..."):
             try:
@@ -795,6 +898,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 for file_obj in files: upload_file_to_drive(service, file_obj, destination_folder_id)
                 st.toast("Archivos de contexto añadidos."); st.rerun()
 
+    # --- 5. Renderizado de la Interfaz de Usuario ---
     st.markdown("---")
     st.subheader("Gestión de Guiones de Subapartados")
     
@@ -885,10 +989,7 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 else: st.write(f"**{subapartado_titulo}**")
                 st.caption(f"Estado: {estado}")
 
-                num_context_files = len(context_files_list)
-                expander_title = f"Gestionar {num_context_files} archivo(s) de contexto" if num_context_files > 0 else "Añadir archivos de contexto"
-                
-                with st.expander(expander_title):
+                with st.expander(f"Gestionar ({len(context_files_list)}) archivos de contexto"):
                     if not subapartado_folder_id:
                         if st.button("Crear carpeta para añadir contexto", key=f"create_folder_{i}"):
                             guiones_main_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
@@ -897,31 +998,27 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                     else:
                         if not context_files_list: st.info("No hay archivos de contexto asignados a este subapartado.")
                         for ctx_file in context_files_list:
-                            file_col1, file_col2 = st.columns([3, 1])
-                            file_col1.write(f"📄 **{ctx_file['name']}**")
-                            file_col2.button("Eliminar", key=f"del_ctx_{ctx_file['id']}", on_click=handle_context_file_delete, args=(ctx_file['id'], ctx_file['name']))
+                            c1, c2 = st.columns([3, 1])
+                            c1.write(f"📄 **{ctx_file['name']}**")
+                            c2.button("Eliminar", key=f"del_ctx_{ctx_file['id']}", on_click=handle_context_file_delete, args=(ctx_file['id'], ctx_file['name']))
                         st.markdown("---")
-                        st.write("**Añadir nuevos archivos de contexto aquí:**")
-                        new_context_files = st.file_uploader("Sube uno o más archivos", accept_multiple_files=True, key=f"uploader_ctx_{i}")
-                        if new_context_files:
-                            st.button("Guardar en Drive", key=f"upload_ctx_{i}", on_click=handle_direct_context_upload, args=(new_context_files, subapartado_folder_id), type="primary")
+                        new_context_files = st.file_uploader("Añadir nuevos archivos de contexto aquí:", accept_multiple_files=True, key=f"uploader_ctx_{i}")
+                        st.button("Guardar en Drive", key=f"upload_ctx_{i}", on_click=handle_direct_context_upload, args=(new_context_files, subapartado_folder_id), type="primary", disabled=not new_context_files)
 
-                if estado == "⚪ No Generado" and st.session_state.get('detected_lotes', []) not in (None, [], ["SIN_LOTES"]):
-                    contexto_options = [lote for lote in st.session_state.get('detected_lotes', []) if lote != selected_lot]
-                    if contexto_options:
-                        st.multiselect("Seleccionar lotes como contexto adicional:", options=contexto_options, key=f"context_{subapartado_titulo}", help="El contenido de los guiones de los lotes que selecciones se usará para dar más contexto a la IA.")
-            
+                if st.session_state.regenerating_item == subapartado_titulo and file_info:
+                    st.text_area("Introduce tus correcciones o feedback para mejorar este guion:", key=f"feedback_{i}", height=150)
+                    c1, c2 = st.columns(2)
+                    c1.button("✅ Confirmar Re-generación", key=f"confirm_regen_{i}", on_click=handle_confirm_regeneration, args=(subapartado_titulo, file_info['id'], st.session_state[f"feedback_{i}"]), type="primary")
+                    c2.button("❌ Cancelar", key=f"cancel_regen_{i}", on_click=cancelar_regeneracion)
+
             with col2:
                 if estado == "📄 Generado" and file_info:
                     st.link_button("Revisar Guion", f"https://docs.google.com/document/d/{file_info['id']}/edit", use_container_width=True)
-                    st.button("Re-Generar con Feedback", key=f"regen_{i}", on_click=ejecutar_regeneracion, args=(subapartado_titulo,), type="primary", use_container_width=True)
+                    st.button("Re-Generar con Feedback", key=f"regen_{i}", on_click=ejecutar_regeneracion, args=(subapartado_titulo,), type="secondary", use_container_width=True)
                     st.button("🗑️ Borrar Carpeta", key=f"del_{i}", on_click=ejecutar_borrado_de_guion_completo, args=(subapartado_titulo, subapartado_folder_id), use_container_width=True)
                 else:
                     if st.button("Generar Borrador", key=f"gen_{i}", use_container_width=True):
                         with st.spinner(f"Generando borrador para '{subapartado_titulo}'..."):
-                            contexto_seleccionado = st.session_state.get(f"context_{subapartado_titulo}", [])
-                            context_str = get_context_from_lots(service, project_folder_id, contexto_seleccionado) if contexto_seleccionado else ""
-                            
                             credentials = get_credentials()
                             project_language = st.session_state.get('project_language', 'Español')
                             if not credentials:
@@ -930,15 +1027,45 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                                 success = ejecutar_generacion_con_gemini(
                                     model=model, credentials=credentials,
                                     project_folder_id=project_folder_id, active_lot_folder_id=active_lot_folder_id,
-                                    titulo=subapartado_titulo, indicaciones_completas=matiz,
-                                    contexto_adicional_lotes=context_str, project_language=project_language
+                                    titulo=subapartado_titulo, indicaciones_completas=matiz, project_language=project_language
                                 )
                                 if success: st.rerun()
 
+    # --- 6. Navegación de la página (LÓGICA ACTUALIZADA) ---
     st.markdown("---")
-    col_nav1, col_nav2 = st.columns(2)
-    with col_nav1: st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
-    with col_nav2: st.button("Ir a Plan de Prompts (F4) →", on_click=go_to_phase4, use_container_width=True)
+    
+    with st.container(border=True):
+        st.subheader("Finalizar Fase y Preparar Redacción")
+        st.info("Este proceso generará todos los planes de prompts y los unificará. Puede tardar varios minutos. Por favor, no recargues ni cierres la página.")
+
+        if st.button("Preparar Redacción y Avanzar a Fase 5 →", type="primary", use_container_width=True):
+            progress_placeholder = st.empty()
+            with progress_placeholder.container():
+                with st.spinner("Ejecutando proceso de preparación... Este es el paso más largo."):
+                    credentials = get_credentials()
+                    project_language = st.session_state.get('project_language', 'Español')
+
+                    if not credentials:
+                        st.error("Error de autenticación. No se puede continuar.")
+                    else:
+                        success = ejecutar_fase_4_en_background(
+                            model, credentials, project_folder_id, active_lot_folder_id,
+                            subapartados_a_mostrar, st.session_state.generated_structure,
+                            project_language
+                        )
+
+                        if success:
+                            progress_placeholder.empty()
+                            st.success("¡Preparación completada! Redirigiendo a la fase de redacción...")
+                            st.balloons()
+                            time.sleep(3)
+                            go_to_phase5()
+                            st.rerun()
+                        else:
+                            st.error("El proceso de preparación falló. Revisa los mensajes de error de arriba. No se avanzará a la siguiente fase.")
+
+    st.markdown("---")
+    st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
 
 # =============================================================================
 #           FASE 4: CENTRO DE MANDO DE PROMPTS
