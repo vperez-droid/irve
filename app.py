@@ -40,7 +40,7 @@ from utils import (
 
 # Todas estas llamadas ahora usarán las versiones cacheadas de drive_utils.py,
 # haciendo la app mucho más rápida en operaciones repetitivas.
-from drive_utils import find_or_create_folder, get_files_in_project, download_file_from_drive
+from drive_utils import find_or_create_folder, get_files_in_project, download_file_from_drive_cached
 
 # =============================================================================
 #           CONFIGURACIÓN GLOBAL Y GESTIÓN DE ESTADO
@@ -124,7 +124,7 @@ def handle_full_regeneration(model):
 
             for file in document_files:
                 # Esta descarga será casi instantánea después de la primera vez
-                file_content_bytes = download_file_from_drive(service, file['id'])
+                file_content_bytes = download_file_from_drive_cached(service, file['id'])
                 nombre_archivo = file['name']
                 
                 if nombre_archivo.lower().endswith('.xlsx'):
