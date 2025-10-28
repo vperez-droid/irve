@@ -93,15 +93,15 @@ def get_credentials():
 
 # OPTIMIZACIÓN APLICADA AQUÍ
 @st.cache_resource
-def build_drive_service(credentials):
+def build_drive_service(_credentials):
     """
     Construye y devuelve el objeto de servicio de la API de Drive.
     Gracias a @st.cache_resource, este objeto se crea una vez y se reutiliza.
     """
     try:
-        # El objeto 'credentials' se pasa como argumento para que el caché sepa
-        # cuándo debe volver a ejecutar la función (si las credenciales cambian).
-        return build('drive', 'v3', credentials=credentials)
+        # El argumento se llama '_credentials' para que el decorador de caché lo ignore.
+        # Usamos ese argumento para construir el servicio.
+        return build('drive', 'v3', credentials=_credentials)
     except HttpError as error:
         st.error(f"No se pudo crear el servicio de Drive: {error}")
         return None
