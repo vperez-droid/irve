@@ -639,11 +639,11 @@ def ejecutar_generacion_con_gemini(model, service, project_folder_id, active_lot
         word_file_obj.name = nombre_archivo
         word_file_obj.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         
-        existing_guion = find_file_by_name(service, nombre_archivo, subapartado_guion_folder_id)
-        if existing_guion: delete_file_from_drive(service, existing_guion)
+        #existing_guion = find_file_by_name(service, nombre_archivo, subapartado_guion_folder_id)
+        #if existing_guion: delete_file_from_drive(service, existing_guion)
         
-        upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
-        if show_toast: st.toast(f"Borrador para '{titulo}' generado y guardado.")
+        #upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
+        if show_toast: st.toast(f"Borrador para '{titulo}' generado y guardado.") 
         return True
     except Exception as e:
         print(f"ERROR en el hilo de generación para '{titulo}': {e}")
