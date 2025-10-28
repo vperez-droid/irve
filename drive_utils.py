@@ -106,9 +106,13 @@ def find_file_by_name(_service, file_name, folder_id, retries=3):
             st.error(f"Error inesperado al buscar archivo: {e}")
             raise
 
+
 @st.cache_data
-def download_file_from_drive(_service, file_id, retries=3):
-    """Descarga el contenido de un archivo de Drive, con reintentos."""
+def download_file_from_drive_cached(_service, file_id, retries=3):
+    """
+    Descarga el contenido de un archivo de Drive.
+    USA EL CACHÉ. Solo debe ser llamada desde el hilo principal de Streamlit.
+    """
     for attempt in range(retries):
         try:
             request = _service.files().get_media(fileId=file_id)
@@ -124,8 +128,33 @@ def download_file_from_drive(_service, file_id, retries=3):
                 time.sleep(2 ** attempt)
             else: raise
         except Exception as e:
-            st.error(f"Error inesperado al descargar: {e}")
+            st.error(f"Error inesperado al descargar (cached): {e}")
             raise
+
+
+def download_file_from_drive_uncached(service, file_id, retries=3):
+    """
+    Descarga el contenido de un archivo de Drive.
+    NO USA EL CACHÉ. Es segura para ser llamada desde múltiples hilos.
+    """
+    for attempt in range(retries):
+        try:
+            request = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request)
+            done = False
+            while done is False:
+                status, done = downloader.next_chunk()
+            fh.seek(0)
+            return fh
+        except (TimeoutError, httplib2.ServerNotFoundError) as e:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+            else: raise
+        except Exception as e:
+            print(f"ERROR en hilo de descarga (uncached) para file_id {file_id}: {e}")
+            raise
+
 
 @st.cache_data
 def list_project_folders(_service, root_folder_id, retries=3):
