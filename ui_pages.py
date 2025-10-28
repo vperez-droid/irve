@@ -10,6 +10,8 @@ import docx
 import google.generativeai as genai
 
 # Imports desde tus módulos
+from auth import get_credentials
+
 from prompts import (
     PROMPT_DETECTAR_LOTES, PROMPT_REGENERACION, PROMPT_GEMINI_PROPUESTA_ESTRATEGICA, 
     PROMPT_CONSULTOR_REVISION, PROMPT_DESARROLLO, PROMPT_CLASIFICAR_DOCUMENTO, PROMPT_GENERAR_INTRODUCCION, 
