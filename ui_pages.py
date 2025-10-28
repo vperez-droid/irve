@@ -575,13 +575,21 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 
 # En ui_pages.py, reemplaza tu función phase_3_page por esta versión definitiva:
 
-def ejecutar_generacion_con_gemini(model, service, project_folder_id, active_lot_folder_id, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
+def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active_lot_folder_id, titulo, indicaciones_completas, contexto_adicional_lotes="", show_toast=True):
     """
-    Ejecuta la generación de un guion para un subapartado específico usando la IA,
-    guardando el resultado como un archivo .docx en Google Drive.
+    Ejecuta la generación de un guion para un subapartado específico usando la IA.
+    Crea su propia instancia de servicio de Drive para ser thread-safe.
     """
+    from googleapiclient.discovery import build # Importar build aquí dentro
+
+    # --- INICIO DE LA MODIFICACIÓN CLAVE ---
+    # Cada hilo crea su propio objeto de servicio para evitar conflictos.
+    service = build('drive', 'v3', credentials=credentials)
+    # --- FIN DE LA MODIFICACIÓN CLAVE ---
+
     nombre_limpio = clean_folder_name(titulo)
     nombre_archivo = nombre_limpio + ".docx"
+    
     try:
         # 1. Preparar carpetas y prompt inicial
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
@@ -639,14 +647,16 @@ def ejecutar_generacion_con_gemini(model, service, project_folder_id, active_lot
         word_file_obj.name = nombre_archivo
         word_file_obj.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         
-        #existing_guion = find_file_by_name(service, nombre_archivo, subapartado_guion_folder_id)
-        #if existing_guion: delete_file_from_drive(service, existing_guion)
+        existing_guion = find_file_by_name(service, nombre_archivo, subapartado_guion_folder_id)
+        if existing_guion: delete_file_from_drive(service, existing_guion)
         
-        #upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
-        if show_toast: st.toast(f"Borrador para '{titulo}' generado y guardado.") 
+        upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
+        if show_toast: st.toast(f"Borrador para '{titulo}' generado y guardado.")
         return True
     except Exception as e:
+        # Imprimir el error en la consola de Streamlit para depuración
         print(f"ERROR en el hilo de generación para '{titulo}': {e}")
+        # Opcional: podrías usar st.error si no estuvieras en un hilo, pero print es más seguro aquí
         return False
 
 def phase_3_page(model, go_to_phase2_results, go_to_phase4):
