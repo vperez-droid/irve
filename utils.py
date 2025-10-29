@@ -317,24 +317,22 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
         st.error(f"Error al convertir HTML a imagen: {e}")
         return None
 
-# --- NUEVA FUNCIÓN MULTIMODAL PARA ANALIZAR DOCX CON GEMINI 2.5 flash ---
+# -----------------------------------------------------------------------------
+#         NUEVA ARQUITECTURA DE ANÁLISIS MULTIMODAL CON CACHÉ
+# -----------------------------------------------------------------------------
 
-def analizar_docx_multimodal_con_gemini(file_bytes_io, nombre_archivo):
+def _analizar_docx_core(file_bytes_io, nombre_archivo):
     """
-    Analiza un archivo .docx (texto e imágenes) usando Gemini 2.5 Pro.
-    Desarma el archivo en sus componentes (texto e imágenes) y los envía
-    en una única solicitud multimodal para un análisis contextual completo.
+    (FUNCIÓN INTERNA - SIN UI)
+    Esta es la lógica pura de análisis. Extrae contenido y llama a la API de Gemini.
+    No usa elementos de Streamlit para poder ser llamada desde la caché.
     """
     try:
-        st.write(f"Iniciando análisis multimodal de '{nombre_archivo}'...")
-        
-        # 1. Abrir el archivo .docx desde el objeto de bytes en memoria
+        # 1. Abrir el documento desde el objeto de bytes
         doc = docx.Document(file_bytes_io)
         
-        # 2. Preparar la lista de "partes" para la API de Gemini.
-        #    Esta lista contendrá una mezcla de texto e imágenes.
+        # 2. Preparar la lista de "partes" para la API
         prompt_parts = [
-            # La primera parte es nuestra instrucción para el modelo
             (
                 "Eres un analista experto de documentos de licitación. A continuación, te proporciono el contenido completo de un documento, "
                 "desglosado en texto e imágenes en el orden en que aparecen. Tu tarea es analizar todo el contenido de forma integral y "
@@ -345,43 +343,68 @@ def analizar_docx_multimodal_con_gemini(file_bytes_io, nombre_archivo):
             )
         ]
 
-        # 3. Extraer todo el texto del documento
+        # 3. Extraer texto
         texto_completo = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
         prompt_parts.append(texto_completo)
         prompt_parts.append("\n--- FIN DEL TEXTO / INICIO DE LAS IMÁGENES ---")
 
-        # 4. Extraer todas las imágenes del documento
-        st.write("Extrayendo imágenes del documento...")
+        # 4. Extraer imágenes
         image_count = 0
         for rel in doc.part.rels.values():
             if "image" in rel.target_ref:
                 image_count += 1
                 image_part = rel.target_part
-                image_bytes = image_part.blob
-                
-                # Convertimos los bytes de la imagen a un objeto PIL.Image
-                # La API de Gemini para Python puede aceptar estos objetos directamente.
-                img = Image.open(io.BytesIO(image_bytes))
-                
-                # Añadimos la imagen como una "parte" a nuestra solicitud
+                img = Image.open(io.BytesIO(image_part.blob))
                 prompt_parts.append(img)
         
-        st.toast(f"Se encontraron y procesaron {image_count} imágenes en '{nombre_archivo}'.")
+        # Imprime en la consola del servidor para depuración, no en la UI.
+        print(f"Análisis CORE: Se procesaron {image_count} imágenes en '{nombre_archivo}'.")
 
-        # 5. Si no hay contenido, no hacemos la llamada
         if not texto_completo and image_count == 0:
-            st.warning(f"El documento '{nombre_archivo}' parece estar vacío.")
-            return ""
+            return "" # Devuelve vacío si no hay contenido
 
-        # 6. Llamar al modelo de Gemini con el contenido multimodal
+        # 5. Llamar a la API
         model = st.session_state.gemini_model
         response = model.generate_content(prompt_parts)
         
-        st.success(f"Análisis de '{nombre_archivo}' completado.")
-        
-        # 7. Devolvemos un texto limpio que representa el análisis completo
         return f"--- INICIO DEL ANÁLISIS MULTIMODAL DEL DOCUMENTO '{nombre_archivo}' ---\n{response.text}\n--- FIN DEL ANÁLISIS ---"
 
     except Exception as e:
-        st.error(f"Error crítico al analizar el DOCX '{nombre_archivo}': {e}")
-        return f"Error procesando el DOCX: {e}"
+        print(f"ERROR en el análisis CORE para '{nombre_archivo}': {e}")
+        # Devuelve un mensaje de error que podemos manejar más arriba
+        return f"Error procesando el DOCX '{nombre_archivo}': {e}"
+
+@st.cache_data(show_spinner=False)
+def get_cached_multimodal_analysis(_file_content_bytes, nombre_archivo):
+    """
+    (FUNCIÓN CACHEABLE)
+    Esta función envuelve la lógica de análisis principal. Streamlit almacenará en caché
+    el resultado. Si se llama de nuevo con los mismos bytes de archivo, devolverá
+    el resultado guardado instantáneamente sin volver a ejecutar el análisis.
+    El guion bajo en '_file_content_bytes' es una convención para indicar que es el
+    argumento principal para el hashing de la caché.
+    """
+    print(f"CACHE MISS: Ejecutando análisis por primera vez para '{nombre_archivo}'.")
+    file_bytes_io = io.BytesIO(_file_content_bytes)
+    return _analizar_docx_core(file_bytes_io, nombre_archivo)
+
+
+def analizar_docx_multimodal_con_gemini(file_bytes_io, nombre_archivo):
+    """
+    (FUNCIÓN PRINCIPAL - CON UI)
+    Esta es la función que llamarás desde tu aplicación. Se encarga de mostrar
+    mensajes al usuario y de llamar a la función cacheable para obtener el análisis.
+    """
+    with st.spinner(f"Analizando '{nombre_archivo}' (texto e imágenes)..."):
+        st.write(f"Procesando archivo: {nombre_archivo}")
+        
+        # Pasamos los bytes crudos a la función cacheada
+        file_content_bytes = file_bytes_io.getvalue()
+        analysis_result = get_cached_multimodal_analysis(file_content_bytes, nombre_archivo)
+        
+        if "Error" in analysis_result:
+            st.error(f"No se pudo analizar '{nombre_archivo}'.")
+            return None
+        
+        st.success(f"Análisis de '{nombre_archivo}' obtenido (de caché o nuevo).")
+        return analysis_result
