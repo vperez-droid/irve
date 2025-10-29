@@ -350,39 +350,43 @@ def analizar_docx_multimodal_con_gemini(file_bytes_io, nombre_archivo):
         st.success(f"Análisis de '{nombre_archivo}' completado.")
         return analysis_result
 
-def generar_fragmento_individual(model, prompt_info, project_language):
+def generar_fragmento_individual(model, prompt_info, reintentos=5, delay_inicial=60):
     """
+    (VERSIÓN MEJORADA CON REINTENTOS)
     Función segura para hilos que genera un único fragmento de texto.
-    
-    Args:
-        model: El modelo de Gemini.
-        prompt_info (dict): Un diccionario con la información del prompt (prompt_para_asistente, subapartado_referencia, etc.).
-        project_language (str): El idioma para la generación.
-
-    Returns:
-        dict: Un diccionario con el resultado, por ejemplo:
-              {'success': True, 'content': '...', 'subapartado': '...'} o
-              {'success': False, 'error': '...', 'subapartado': '...'}
+    Implementa una estrategia de reintentos con exponential backoff para errores de API.
     """
     subapartado = prompt_info.get("subapartado_referencia", "Desconocido")
     prompt_a_enviar = prompt_info.get("prompt_para_asistente")
+    prompt_id = prompt_info.get("prompt_id")
 
     if not prompt_a_enviar:
-        return {'success': False, 'error': 'Prompt vacío.', 'subapartado': subapartado}
+        return {'success': False, 'error': 'El prompt estaba vacío.', 'prompt_id': prompt_id}
 
-    try:
-        # ¡CLAVE! Cada llamada es independiente, no usa un chat persistente.
-        # Es equivalente a iniciar un chat nuevo cada vez.
-        response = model.generate_content(prompt_a_enviar)
-        
-        if not response.candidates:
-            reason = "Bloqueado por filtros de seguridad"
-            if hasattr(response, 'prompt_feedback'):
-                reason = response.prompt_feedback.block_reason.name
-            return {'success': False, 'error': f"Respuesta bloqueada: {reason}", 'subapartado': subapartado}
-        
-        # Guardamos el texto bruto. La limpieza se hará en el hilo principal.
-        return {'success': True, 'content': response.text, 'subapartado': subapartado, 'prompt_id': prompt_info.get("prompt_id", "")}
+    for i in range(reintentos):
+        try:
+            # Cada llamada es independiente
+            response = model.generate_content(prompt_a_enviar)
+            
+            if not response.candidates:
+                reason = "Bloqueado por filtros de seguridad"
+                if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
+                    reason = response.prompt_feedback.block_reason.name
+                # Este no es un error de API, no reintentamos
+                return {'success': False, 'error': f"Respuesta bloqueada ({reason})", 'prompt_id': prompt_id}
+            
+            # Éxito, devolvemos el resultado
+            return {'success': True, 'content': response.text, 'prompt_id': prompt_id}
 
-    except Exception as e:
-        return {'success': False, 'error': str(e), 'subapartado': subapartado}
+        except google.api_core.exceptions.ResourceExhausted as e:
+            delay = delay_inicial * (2 ** i)  # Exponential backoff
+            print(f"HILO {prompt_id}: Límite de API alcanzado. Reintentando en {delay} segundos... (Intento {i+1}/{reintentos})")
+            time.sleep(delay)
+
+        except Exception as e:
+            # Para otros errores, fallamos directamente sin reintentar
+            print(f"HILO {prompt_id}: Error inesperado. {str(e)}")
+            return {'success': False, 'error': str(e), 'prompt_id': prompt_id}
+    
+    # Si todos los reintentos fallan
+    return {'success': False, 'error': f"Límite de API excedido tras {reintentos} intentos.", 'prompt_id': prompt_id}
