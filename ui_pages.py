@@ -26,7 +26,7 @@ from drive_utils import (
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
     wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, analizar_docx_multimodal_con_gemini,
-    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, get_lot_index_info, generar_indice_word, 
+    corregir_numeracion_markdown, enviar_mensaje_con_reintentos, get_lot_index_info, generar_indice_word, generar_fragmento_individual,
     get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, 
     convertir_excel_a_texto_csv
 )
@@ -1435,31 +1435,26 @@ def phase_4_page(model, go_to_phase3, go_to_phase5):
 #           PÁGINA FASE 5: REDACCIÓN DEL CUERPO DEL DOCUMENTO
 # =============================================================================
 def phase_5_page(model, go_to_phase4, go_to_phase6):
-    st.markdown("<h3>FASE 5: Redacción del Cuerpo del Documento</h3>", unsafe_allow_html=True)
-    st.markdown("Ejecuta el plan de prompts para generar el contenido completo de la memoria técnica.")
+    st.markdown("<h3>FASE 5: Redacción del Cuerpo del Documento (en Paralelo)</h3>", unsafe_allow_html=True)
+    st.markdown("Ejecuta el plan de prompts para generar el contenido completo de la memoria técnica de forma rápida y controlada.")
     st.markdown("---")
     
     # --- 1. Carga del Plan de Acción (sin cambios) ---
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
-
     selected_lot = st.session_state.get('selected_lot')
     if not selected_lot:
-        st.warning("No se ha seleccionado un lote en la sesión. Por favor, vuelve a la Fase 1 para continuar.")
+        st.warning("No se ha seleccionado un lote. Vuelve a la Fase 1.")
         return
-
     active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, selected_lot)
     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
-
     lot_name_clean = clean_folder_name(selected_lot)
     plan_filename = f"plan_de_prompts_{lot_name_clean}.json"
     plan_conjunto_id = find_file_by_name(service, plan_filename, docs_app_folder_id)
 
     if not plan_conjunto_id:
-        st.warning(f"No se ha encontrado un plan de prompts ('{plan_filename}') para este lote. Vuelve a la Fase 4 para generarlo y unificarlo.")
-        if st.button("← Ir a Fase 4"): 
-            go_to_phase4()
-            st.rerun()
+        st.warning(f"No se ha encontrado un plan de prompts ('{plan_filename}'). Vuelve a la Fase 4 para generarlo.")
+        if st.button("← Ir a Fase 4"): go_to_phase4(); st.rerun()
         return
 
     try:
@@ -1467,137 +1462,110 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         plan_de_accion = json.loads(json_bytes.decode('utf-8'))
         lista_de_prompts = plan_de_accion.get("plan_de_prompts", [])
         if lista_de_prompts:
-            lista_de_prompts.sort(key=lambda x: natural_sort_key(x.get('subapartado_referencia', '')))
-        st.success(f"✔️ Plan de acción para '{selected_lot}' cargado. Se ejecutarán {len(lista_de_prompts)} prompts.")
+            lista_de_prompts.sort(key=lambda x: (natural_sort_key(x.get('apartado_referencia', '')), natural_sort_key(x.get('subapartado_referencia', ''))))
+        st.success(f"✔️ Plan de acción cargado. Se ejecutarán **{len(lista_de_prompts)}** prompts para redactar el documento.")
     except Exception as e:
         st.error(f"Error al cargar o procesar el plan de acción: {e}")
         return
 
-    # --- 2. Lógica de Generación del Documento (con la corrección) ---
+    # --- 2. Lógica de Generación del Documento en Paralelo ---
     button_text = "🔁 Volver a Generar Cuerpo del Documento" if st.session_state.get("generated_doc_buffer") else "🚀 Iniciar Redacción y Generar Cuerpo"
     
     if st.button(button_text, type="primary", use_container_width=True):
         if not lista_de_prompts:
-            st.warning("El plan de acción está vacío. No hay nada que ejecutar.")
-            return
+            st.warning("El plan de acción está vacío. No hay nada que ejecutar."); return
             
-        generation_successful = False
-        documento = docx.Document()
+        MAX_WORKERS = 4
+        progress_bar = st.progress(0, text=f"Configurando redacción con {MAX_WORKERS} workers...")
+        resultados_ordenados = {tarea.get("prompt_id"): None for tarea in lista_de_prompts}
         
-        try:
-            with st.spinner("Iniciando redacción... Esto puede tardar varios minutos."):
-                # Lógica para calcular presupuestos de caracteres (sin cambios)
-                fragment_counts = {}
-                for tarea in lista_de_prompts:
-                    sub_ref = tarea.get("subapartado_referencia")
-                    if sub_ref: fragment_counts[sub_ref] = fragment_counts.get(sub_ref, 0) + 1
-                
-                character_budgets = {}
-                plan_extension = st.session_state.generated_structure.get('plan_extension', [])
-                for item_apartado in plan_extension:
-                    for item_subapartado in item_apartado.get('desglose_subapartados', []):
-                        sub_ref = item_subapartado.get('subapartado')
-                        if sub_ref:
-                            character_budgets[sub_ref] = (
-                                item_subapartado.get('min_caracteres_sugeridos', 3500),
-                                item_subapartado.get('max_caracteres_sugeridos', 3800)
-                            )
+        with st.spinner(f"Redactando {len(lista_de_prompts)} fragmentos... Esto puede tardar varios minutos (especialmente si hay esperas por límites de API)."):
+            completed_count = 0
+            with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+                future_to_id = {
+                    executor.submit(generar_fragmento_individual, model, tarea): tarea.get("prompt_id")
+                    for tarea in lista_de_prompts
+                }
 
-                chat_redaccion = model.start_chat()
-                progress_bar = st.progress(0, text="Configurando sesión de chat...")
-                ultimo_apartado_escrito = None
+                for future in concurrent.futures.as_completed(future_to_id):
+                    prompt_id = future_to_id[future]
+                    try:
+                        resultado = future.result()
+                        resultados_ordenados[prompt_id] = resultado
+                    except Exception as exc:
+                        resultados_ordenados[prompt_id] = {'success': False, 'error': f"Error de hilo: {str(exc)}"}
+                    
+                    completed_count += 1
+                    progress_text = f"Fragmentos redactados: {completed_count}/{len(lista_de_prompts)}"
+                    progress_bar.progress(completed_count / len(lista_de_prompts), text=progress_text)
+        
+        st.toast("Redacción en paralelo completada. Ensamblando documento...")
+
+        # --- FASE DE ENSAMBLAJE POST-GENERACIÓN ---
+        documento = docx.Document()
+        ultimo_apartado_escrito = None
+        ultimo_subapartado_escrito = None
+        generation_successful = True
+
+        for tarea in lista_de_prompts:
+            prompt_id = tarea.get("prompt_id")
+            resultado = resultados_ordenados.get(prompt_id)
+            
+            subapartado_actual = tarea.get("subapartado_referencia")
+            apartado_actual = tarea.get("apartado_referencia")
+
+            if apartado_actual and apartado_actual != ultimo_apartado_escrito:
+                if ultimo_apartado_escrito is not None: documento.add_page_break()
+                documento.add_heading(apartado_actual, level=1)
+                ultimo_apartado_escrito = apartado_actual
                 ultimo_subapartado_escrito = None
+            
+            if subapartado_actual and subapartado_actual != ultimo_subapartado_escrito:
+                documento.add_heading(subapartado_actual, level=2)
+                ultimo_subapartado_escrito = subapartado_actual
 
-                for i, tarea in enumerate(lista_de_prompts):
-                    subapartado_actual = tarea.get("subapartado_referencia")
-                    apartado_actual = tarea.get("apartado_referencia")
-                    progress_text = f"Procesando Tarea {i+1}/{len(lista_de_prompts)}: {subapartado_actual or 'N/A'}"
-                    progress_bar.progress((i + 1) / len(lista_de_prompts), text=progress_text)
-                    
-                    # Lógica para añadir encabezados (sin cambios)
-                    if apartado_actual and apartado_actual != ultimo_apartado_escrito:
-                        if ultimo_apartado_escrito is not None: documento.add_page_break()
-                        documento.add_heading(apartado_actual, level=1)
-                        ultimo_apartado_escrito = apartado_actual
-                        ultimo_subapartado_escrito = None
-                    
-                    if subapartado_actual and subapartado_actual != ultimo_subapartado_escrito:
-                        documento.add_heading(subapartado_actual, level=2)
-                        ultimo_subapartado_escrito = subapartado_actual
-
-                    prompt_actual = tarea.get("prompt_para_asistente")
-                    respuesta_ia_bruta = ""
-                    if prompt_actual:
-                        
-                        # ==========================================================
-                        # --- INICIO DEL BLOQUE DE CÓDIGO CORREGIDO ---
-                        # ==========================================================
-                        
-                        prompt_a_enviar = prompt_actual
-                        # La condición ahora busca las dobles llaves {{...}}
-                        if subapartado_actual and '{{min_chars_fragmento}}' in prompt_a_enviar:
-                            num_fragments = fragment_counts.get(subapartado_actual, 1)
-                            min_total, max_total = character_budgets.get(subapartado_actual, (3500, 3800))
-                            
-                            # Se asegura de que num_fragments nunca sea cero para evitar división por cero
-                            if num_fragments <= 0: num_fragments = 1
-                            
-                            min_per_fragment = min_total / num_fragments
-                            max_per_fragment = max_total / num_fragments
-                            
-                            # Usamos .replace() en lugar de .format() para manejar las dobles llaves
-                            prompt_a_enviar = prompt_a_enviar.replace('{{min_chars_fragmento}}', str(int(min_per_fragment)))
-                            prompt_a_enviar = prompt_a_enviar.replace('{{max_chars_fragmento}}', str(int(max_per_fragment)))
-
-                        # ==========================================================
-                        # --- FIN DEL BLOQUE DE CÓDIGO CORREGIDO ---
-                        # ==========================================================
-
-                        response = enviar_mensaje_con_reintentos(chat_redaccion, prompt_a_enviar)
-                        if not response:
-                            st.error("La generación se ha detenido debido a un error persistente en la API."); generation_successful = False; break
-                        respuesta_ia_bruta = response.text
-
-                    # Lógica para procesar la respuesta (HTML o Markdown, sin cambios)
-                    es_html = ("HTML" in tarea.get("prompt_id", "").upper() or "VISUAL" in tarea.get("prompt_id", "").upper() or respuesta_ia_bruta.strip().startswith(('<!DOCTYPE html>', '<div', '<table')))
-                    
-                    if es_html:
-                        html_puro = limpiar_respuesta_final(respuesta_ia_bruta)
-                        # Asegúrate de haber corregido el error de red en html_a_imagen (en utils.py)
-                        image_file = html_a_imagen(wrap_html_fragment(html_puro), f"temp_img_{i}.png")
-                        if image_file and os.path.exists(image_file):
-                            documento.add_picture(image_file, width=docx.shared.Inches(6.5))
-                            os.remove(image_file)
-                        else:
-                            documento.add_paragraph("[ERROR AL GENERAR IMAGEN DESDE HTML]")
+            if resultado and resultado['success']:
+                respuesta_ia_bruta = resultado['content']
+                es_html = ("HTML" in prompt_id.upper() or "VISUAL" in prompt_id.upper() or respuesta_ia_bruta.strip().startswith(('<!DOCTYPE html>', '<div', '<table')))
+                
+                if es_html:
+                    html_puro = limpiar_respuesta_final(respuesta_ia_bruta)
+                    image_file = html_a_imagen(wrap_html_fragment(html_puro), f"temp_img_{prompt_id}.png")
+                    if image_file and os.path.exists(image_file):
+                        documento.add_picture(image_file, width=docx.shared.Inches(6.5))
+                        os.remove(image_file)
                     else:
-                        texto_limpio = limpiar_respuesta_final(respuesta_ia_bruta)
-                        texto_corregido = corregir_numeracion_markdown(texto_limpio)
-                        if texto_corregido: agregar_markdown_a_word(documento, texto_corregido)
-                else: # Este 'else' se ejecuta si el bucle 'for' termina sin un 'break'
-                    generation_successful = True
+                        documento.add_paragraph("[ERROR AL GENERAR IMAGEN DESDE HTML]")
+                else:
+                    texto_limpio = limpiar_respuesta_final(respuesta_ia_bruta)
+                    texto_corregido = corregir_numeracion_markdown(texto_limpio)
+                    agregar_markdown_a_word(documento, texto_corregido)
+            else:
+                error_msg = resultado.get('error', 'Error desconocido') if resultado else 'Resultado no encontrado'
+                p = documento.add_paragraph()
+                p.add_run(f"[ERROR EN LA GENERACIÓN DE ESTE FRAGMENTO: {error_msg}]").bold = True
+                p.runs[0].font.color.rgb = docx.shared.RGBColor(255, 0, 0)
+                generation_successful = False
 
-        except Exception as e:
-            st.error(f"Ocurrió un error crítico durante la generación del cuerpo: {e}"); generation_successful = False
-
-        # Lógica para guardar el documento (sin cambios)
+        # --- GUARDADO DEL DOCUMENTO ENSAMBLADO ---
         if generation_successful:
-            project_name = st.session_state.selected_project['name']
-            safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
+            st.success("¡Cuerpo del documento ensamblado con éxito!")
+        else:
+            st.warning("El documento se ensambló, pero contiene errores. Por favor, revísalo.")
+        
+        project_name = st.session_state.selected_project['name']
+        safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
+        lot_name_clean_filename = lot_name_clean.replace(' ', '_')
+        nombre_archivo_final = f"Cuerpo_Memoria_{safe_project_name}_{lot_name_clean_filename}.docx"
             
-            lot_name_clean_filename = lot_name_clean.replace(' ', '_')
-            nombre_archivo_final = f"Cuerpo_Memoria_{safe_project_name}_{lot_name_clean_filename}.docx"
+        doc_io = io.BytesIO()
+        documento.save(doc_io); doc_io.seek(0)
             
-            doc_io = io.BytesIO()
-            documento.save(doc_io)
-            doc_io.seek(0)
-            
-            st.session_state.generated_doc_buffer = doc_io
-            st.session_state.generated_doc_filename = nombre_archivo_final
-            st.success("¡Cuerpo del documento generado con éxito!")
-            st.rerun()
+        st.session_state.generated_doc_buffer = doc_io
+        st.session_state.generated_doc_filename = nombre_archivo_final
+        st.rerun()
 
-    # --- 3. UI de Descarga y Navegación (sin cambios) ---
+    # --- 3. UI de Descarga y Navegación ---
     if st.session_state.get("generated_doc_buffer"):
         st.info("El cuerpo del documento está listo para descargar o para el ensamblaje final.")
         st.download_button(
