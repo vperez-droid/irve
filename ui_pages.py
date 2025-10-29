@@ -105,51 +105,47 @@ def project_selection_page(go_to_landing, go_to_phase1):
 
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Lotes y Viabilidad</h3>", unsafe_allow_html=True)
-    ANALYSIS_FILENAME = "Analisis_de_Viabilidad.docx"
-    LOTES_FILENAME = "resultado_analisis_lotes.json"
 
+    # --- Verificación inicial de sesión ---
     if not st.session_state.get('selected_project'):
         st.warning("No se ha seleccionado ningún proyecto. Volviendo a la selección.")
         go_to_project_selection(); st.rerun()
         return
-    
+
+    # --- CORRECCIÓN 1: Nombres de archivo únicos por proyecto ---
     project_name = st.session_state.selected_project['name']
+    safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
+    ANALYSIS_FILENAME = f"Analisis_de_Viabilidad_{safe_project_name}.docx"
+    
+    # Este nombre de archivo puede seguir siendo genérico porque está dentro de la carpeta del proyecto
+    LOTES_FILENAME = "resultado_analisis_lotes.json"
+
     project_folder_id = st.session_state.selected_project['id']
     service = st.session_state.drive_service
     st.info(f"Proyecto activo: **{project_name}**.")
 
-    # ==========================================================
-    # --- INICIO DEL NUEVO BLOQUE DE CÓDIGO ---
-    # ==========================================================
+    # --- CORRECCIÓN 2: Captura del nombre de la empresa cliente ---
     with st.container(border=True):
         st.subheader("🏢 Identificación de la Empresa Cliente")
         
-        # Inicializa la variable en session_state si no existe, con un valor por defecto.
         if 'company_name' not in st.session_state:
             st.session_state.company_name = "La UTE"
 
-        # Cuadro de texto para introducir o cambiar el nombre de la empresa.
-        # El valor se guarda automáticamente en st.session_state.company_name en cada interacción.
         company_name_input = st.text_input(
             "Introduce el nombre de la empresa para la que licitas (o 'La UTE' si es una unión temporal):",
-            value=st.session_state.company_name,
+            value=st.session_state.get('company_name', 'La UTE'),
             key="company_name_input"
         )
-        
-        # Actualiza el estado de la sesión con el valor del input
         st.session_state.company_name = company_name_input
 
-        # Muestra una confirmación del nombre que se usará.
         if st.session_state.company_name:
             st.success(f"Los documentos se generarán para: **{st.session_state.company_name}**")
         else:
             st.warning("No se ha especificado un nombre de empresa. Se usará el valor por defecto 'La UTE'.")
-    # ==========================================================
-    # --- FIN DEL NUEVO BLOQUE DE CÓDIGO ---
-    # ==========================================================
     
     st.markdown("---")
 
+    # --- Gestión de Documentos (sin cambios) ---
     with st.container(border=True):
         st.subheader("1. Documentos en tu Proyecto")
         with st.spinner("Buscando archivos en Google Drive..."):
@@ -170,6 +166,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
 
     st.markdown("---")
     
+    # --- Detección de Lotes (sin cambios en la lógica interna) ---
     def detectar_lotes():
         with st.spinner("Analizando documentos para detectar lotes..."):
             try:
@@ -209,11 +206,11 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
             except Exception as e:
                 st.error(f"Ocurrió un error al detectar lotes: {e}")
 
+    # --- Selección de Lote (sin cambios) ---
     st.header("2. Selección de Lote")
-    
     if 'detected_lotes' not in st.session_state:
         st.session_state.detected_lotes = None
-
+    # ... (El resto de esta sección de UI no cambia)
     if st.session_state.detected_lotes is None:
         try:
             docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
@@ -230,7 +227,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         except Exception as e:
             st.warning(f"No se pudo cargar el análisis de lotes guardado. Puede que necesites generarlo de nuevo. Error: {e}")
             st.session_state.detected_lotes = "ERROR"
-
+    
     if st.session_state.detected_lotes is None or st.session_state.detected_lotes == "ERROR":
         st.info("Antes de analizar la viabilidad, la aplicación comprobará si la licitación está dividida en lotes.")
         st.button("Analizar Lotes en los Documentos", on_click=detectar_lotes, type="primary", use_container_width=True, disabled=not documentos_pliegos)
@@ -264,6 +261,8 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         st.selectbox("Elige el lote al que quieres presentarte o cámbialo si es necesario:", options=opciones_lotes, index=index, key="lot_selector_key", on_change=on_lot_change)
         st.button("🔄 Forzar Re-análisis de Lotes", on_click=detectar_lotes, help="Vuelve a analizar los documentos si has subido nuevos archivos.", use_container_width=True)
 
+
+    # --- Extracción de Requisitos Clave (la lógica ahora usa el ANALYSIS_FILENAME único) ---
     if st.session_state.get('selected_lot') is not None:
         st.markdown("---")
         st.header("3. Extracción de Requisitos Clave")
@@ -297,14 +296,17 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                             contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
                     response = model.generate_content(contenido_ia)
                     if not response.candidates: st.error("Gemini no generó una respuesta."); return
+                    
                     documento = docx.Document()
                     agregar_markdown_a_word(documento, response.text)
                     buffer = io.BytesIO()
                     documento.save(buffer); buffer.seek(0)
-                    buffer.name = ANALYSIS_FILENAME
+                    buffer.name = ANALYSIS_FILENAME # Usa el nombre de archivo único
                     buffer.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    
                     if st.session_state.get('analysis_doc_id'):
                         delete_file_from_drive(service, st.session_state['analysis_doc_id'])
+                        
                     new_file_id = upload_file_to_drive(service, buffer, docs_app_folder_id)
                     st.session_state.analysis_doc_id = new_file_id
                     st.toast("✅ ¡Análisis guardado en tu Drive!")
@@ -313,11 +315,12 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     st.error(f"Ocurrió un error crítico durante el análisis: {e}")
 
         if st.session_state.analysis_doc_id:
-            st.success("✔️ Ya existe un análisis de viabilidad guardado para el lote seleccionado.")
+            st.success("✔️ Ya existe un análisis de viabilidad guardado para este proyecto/lote.")
             if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
                 with st.spinner("Descargando desde Drive..."):
                     file_bytes = download_file_from_drive_cached(service, st.session_state.analysis_doc_id)
                     st.download_button(label="¡Listo! Haz clic aquí para descargar", data=file_bytes, file_name=ANALYSIS_FILENAME, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+            
             col1, col2 = st.columns(2)
             with col1:
                 st.button("🔁 Re-generar Análisis para este Lote", on_click=generate_and_save_analysis, use_container_width=True, disabled=not documentos_pliegos)
