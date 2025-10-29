@@ -9,6 +9,7 @@ from pypdf import PdfReader
 import pandas as pd
 import time
 import google.api_core.exceptions
+from PIL import Image
 
 # <-- ¡CORRECCIÓN APLICADA AQUÍ! AÑADIMOS LA IMPORTACIÓN DE 'clean_folder_name'
 from drive_utils import find_or_create_folder, get_or_create_lot_folder_id, clean_folder_name
@@ -315,3 +316,72 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
     except Exception as e:
         st.error(f"Error al convertir HTML a imagen: {e}")
         return None
+
+# --- NUEVA FUNCIÓN MULTIMODAL PARA ANALIZAR DOCX CON GEMINI 2.5 flash ---
+
+def analizar_docx_multimodal_con_gemini(file_bytes_io, nombre_archivo):
+    """
+    Analiza un archivo .docx (texto e imágenes) usando Gemini 2.5 Pro.
+    Desarma el archivo en sus componentes (texto e imágenes) y los envía
+    en una única solicitud multimodal para un análisis contextual completo.
+    """
+    try:
+        st.write(f"Iniciando análisis multimodal de '{nombre_archivo}'...")
+        
+        # 1. Abrir el archivo .docx desde el objeto de bytes en memoria
+        doc = docx.Document(file_bytes_io)
+        
+        # 2. Preparar la lista de "partes" para la API de Gemini.
+        #    Esta lista contendrá una mezcla de texto e imágenes.
+        prompt_parts = [
+            # La primera parte es nuestra instrucción para el modelo
+            (
+                "Eres un analista experto de documentos de licitación. A continuación, te proporciono el contenido completo de un documento, "
+                "desglosado en texto e imágenes en el orden en que aparecen. Tu tarea es analizar todo el contenido de forma integral y "
+                "generar un único resumen de texto enriquecido que capture toda la información clave. Describe explícitamente el contenido de las imágenes "
+                "(diagramas, esquemas, fotos) y explica cómo se relacionan con el texto circundante. El resultado debe ser un texto coherente "
+                "que pueda ser utilizado por otro modelo de IA para entender completamente el documento original sin necesidad de verlo.\n\n"
+                "--- INICIO DEL CONTENIDO DEL DOCUMENTO ---\n"
+            )
+        ]
+
+        # 3. Extraer todo el texto del documento
+        texto_completo = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
+        prompt_parts.append(texto_completo)
+        prompt_parts.append("\n--- FIN DEL TEXTO / INICIO DE LAS IMÁGENES ---")
+
+        # 4. Extraer todas las imágenes del documento
+        st.write("Extrayendo imágenes del documento...")
+        image_count = 0
+        for rel in doc.part.rels.values():
+            if "image" in rel.target_ref:
+                image_count += 1
+                image_part = rel.target_part
+                image_bytes = image_part.blob
+                
+                # Convertimos los bytes de la imagen a un objeto PIL.Image
+                # La API de Gemini para Python puede aceptar estos objetos directamente.
+                img = Image.open(io.BytesIO(image_bytes))
+                
+                # Añadimos la imagen como una "parte" a nuestra solicitud
+                prompt_parts.append(img)
+        
+        st.toast(f"Se encontraron y procesaron {image_count} imágenes en '{nombre_archivo}'.")
+
+        # 5. Si no hay contenido, no hacemos la llamada
+        if not texto_completo and image_count == 0:
+            st.warning(f"El documento '{nombre_archivo}' parece estar vacío.")
+            return ""
+
+        # 6. Llamar al modelo de Gemini con el contenido multimodal
+        model = st.session_state.gemini_model
+        response = model.generate_content(prompt_parts)
+        
+        st.success(f"Análisis de '{nombre_archivo}' completado.")
+        
+        # 7. Devolvemos un texto limpio que representa el análisis completo
+        return f"--- INICIO DEL ANÁLISIS MULTIMODAL DEL DOCUMENTO '{nombre_archivo}' ---\n{response.text}\n--- FIN DEL ANÁLISIS ---"
+
+    except Exception as e:
+        st.error(f"Error crítico al analizar el DOCX '{nombre_archivo}': {e}")
+        return f"Error procesando el DOCX: {e}"
