@@ -1406,6 +1406,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
     st.markdown("Ejecuta el plan de prompts para generar el contenido completo de la memoria técnica.")
     st.markdown("---")
     
+    # --- 1. Carga del Plan de Acción (sin cambios) ---
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
 
@@ -1439,6 +1440,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         st.error(f"Error al cargar o procesar el plan de acción: {e}")
         return
 
+    # --- 2. Lógica de Generación del Documento (con la corrección) ---
     button_text = "🔁 Volver a Generar Cuerpo del Documento" if st.session_state.get("generated_doc_buffer") else "🚀 Iniciar Redacción y Generar Cuerpo"
     
     if st.button(button_text, type="primary", use_container_width=True):
@@ -1451,6 +1453,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         
         try:
             with st.spinner("Iniciando redacción... Esto puede tardar varios minutos."):
+                # Lógica para calcular presupuestos de caracteres (sin cambios)
                 fragment_counts = {}
                 for tarea in lista_de_prompts:
                     sub_ref = tarea.get("subapartado_referencia")
@@ -1478,6 +1481,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                     progress_text = f"Procesando Tarea {i+1}/{len(lista_de_prompts)}: {subapartado_actual or 'N/A'}"
                     progress_bar.progress((i + 1) / len(lista_de_prompts), text=progress_text)
                     
+                    # Lógica para añadir encabezados (sin cambios)
                     if apartado_actual and apartado_actual != ultimo_apartado_escrito:
                         if ultimo_apartado_escrito is not None: documento.add_page_break()
                         documento.add_heading(apartado_actual, level=1)
@@ -1491,23 +1495,42 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                     prompt_actual = tarea.get("prompt_para_asistente")
                     respuesta_ia_bruta = ""
                     if prompt_actual:
+                        
+                        # ==========================================================
+                        # --- INICIO DEL BLOQUE DE CÓDIGO CORREGIDO ---
+                        # ==========================================================
+                        
                         prompt_a_enviar = prompt_actual
-                        if subapartado_actual and '{min_chars_fragmento}' in prompt_actual:
+                        # La condición ahora busca las dobles llaves {{...}}
+                        if subapartado_actual and '{{min_chars_fragmento}}' in prompt_a_enviar:
                             num_fragments = fragment_counts.get(subapartado_actual, 1)
                             min_total, max_total = character_budgets.get(subapartado_actual, (3500, 3800))
+                            
+                            # Se asegura de que num_fragments nunca sea cero para evitar división por cero
+                            if num_fragments <= 0: num_fragments = 1
+                            
                             min_per_fragment = min_total / num_fragments
                             max_per_fragment = max_total / num_fragments
-                            prompt_a_enviar = prompt_actual.format(min_chars_fragmento=int(min_per_fragment), max_chars_fragmento=int(max_per_fragment))
+                            
+                            # Usamos .replace() en lugar de .format() para manejar las dobles llaves
+                            prompt_a_enviar = prompt_a_enviar.replace('{{min_chars_fragmento}}', str(int(min_per_fragment)))
+                            prompt_a_enviar = prompt_a_enviar.replace('{{max_chars_fragmento}}', str(int(max_per_fragment)))
+
+                        # ==========================================================
+                        # --- FIN DEL BLOQUE DE CÓDIGO CORREGIDO ---
+                        # ==========================================================
 
                         response = enviar_mensaje_con_reintentos(chat_redaccion, prompt_a_enviar)
                         if not response:
                             st.error("La generación se ha detenido debido a un error persistente en la API."); generation_successful = False; break
                         respuesta_ia_bruta = response.text
 
+                    # Lógica para procesar la respuesta (HTML o Markdown, sin cambios)
                     es_html = ("HTML" in tarea.get("prompt_id", "").upper() or "VISUAL" in tarea.get("prompt_id", "").upper() or respuesta_ia_bruta.strip().startswith(('<!DOCTYPE html>', '<div', '<table')))
                     
                     if es_html:
                         html_puro = limpiar_respuesta_final(respuesta_ia_bruta)
+                        # Asegúrate de haber corregido el error de red en html_a_imagen (en utils.py)
                         image_file = html_a_imagen(wrap_html_fragment(html_puro), f"temp_img_{i}.png")
                         if image_file and os.path.exists(image_file):
                             documento.add_picture(image_file, width=docx.shared.Inches(6.5))
@@ -1518,12 +1541,13 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                         texto_limpio = limpiar_respuesta_final(respuesta_ia_bruta)
                         texto_corregido = corregir_numeracion_markdown(texto_limpio)
                         if texto_corregido: agregar_markdown_a_word(documento, texto_corregido)
-                else:
+                else: # Este 'else' se ejecuta si el bucle 'for' termina sin un 'break'
                     generation_successful = True
 
         except Exception as e:
             st.error(f"Ocurrió un error crítico durante la generación del cuerpo: {e}"); generation_successful = False
 
+        # Lógica para guardar el documento (sin cambios)
         if generation_successful:
             project_name = st.session_state.selected_project['name']
             safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
@@ -1540,6 +1564,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
             st.success("¡Cuerpo del documento generado con éxito!")
             st.rerun()
 
+    # --- 3. UI de Descarga y Navegación (sin cambios) ---
     if st.session_state.get("generated_doc_buffer"):
         st.info("El cuerpo del documento está listo para descargar o para el ensamblaje final.")
         st.download_button(
@@ -1562,7 +1587,6 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
             type="primary", 
             disabled=not st.session_state.get("generated_doc_buffer")
         )
-        
 # =============================================================================
 #           PÁGINA FASE 6: ENSAMBLAJE FINAL
 # =============================================================================
