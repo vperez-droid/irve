@@ -325,13 +325,10 @@ def _analizar_docx_core(file_bytes_io, nombre_archivo):
     """
     (FUNCIÓN INTERNA - SIN UI)
     Esta es la lógica pura de análisis. Extrae contenido y llama a la API de Gemini.
-    No usa elementos de Streamlit para poder ser llamada desde la caché.
+    ¡VERSIÓN ROBUSTA Y OPTIMIZADA!
     """
     try:
-        # 1. Abrir el documento desde el objeto de bytes
         doc = docx.Document(file_bytes_io)
-        
-        # 2. Preparar la lista de "partes" para la API
         prompt_parts = [
             (
                 "Eres un analista experto de documentos de licitación. A continuación, te proporciono el contenido completo de un documento, "
@@ -342,28 +339,42 @@ def _analizar_docx_core(file_bytes_io, nombre_archivo):
                 "--- INICIO DEL CONTENIDO DEL DOCUMENTO ---\n"
             )
         ]
-
-        # 3. Extraer texto
         texto_completo = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
         prompt_parts.append(texto_completo)
         prompt_parts.append("\n--- FIN DEL TEXTO / INICIO DE LAS IMÁGENES ---")
 
-        # 4. Extraer imágenes
         image_count = 0
+        skipped_images = 0
         for rel in doc.part.rels.values():
             if "image" in rel.target_ref:
-                image_count += 1
-                image_part = rel.target_part
-                img = Image.open(io.BytesIO(image_part.blob))
-                prompt_parts.append(img)
-        
-        # Imprime en la consola del servidor para depuración, no en la UI.
-        print(f"Análisis CORE: Se procesaron {image_count} imágenes en '{nombre_archivo}'.")
+                
+                # --- INICIO DE LA MEJORA DE ROBUSTEZ ---
+                try:
+                    image_part = rel.target_part
+                    image_bytes = image_part.blob
+                    img = Image.open(io.BytesIO(image_bytes))
+
+                    # --- INICIO DE LA MEJORA DE EFICIENCIA ---
+                    # Reducimos el tamaño de la imagen para no superar el límite de la API
+                    # Mantiene la proporción, con un máximo de 1024px en el lado más largo.
+                    img.thumbnail((1024, 1024)) 
+                    # --- FIN DE LA MEJORA DE EFICIENCIA ---
+
+                    prompt_parts.append(img)
+                    image_count += 1
+
+                except Exception as e:
+                    # Esta es la "red de seguridad". Si Pillow no puede abrir la imagen
+                    # (porque es un WMF, etc.), lo ignoramos y continuamos.
+                    skipped_images += 1
+                    print(f"ADVERTENCIA: Se omitió una imagen no soportada en '{nombre_archivo}'. Error: {e}")
+                # --- FIN DE LA MEJORA DE ROBUSTEZ ---
+
+        print(f"Análisis CORE: Se procesaron {image_count} imágenes y se omitieron {skipped_images} en '{nombre_archivo}'.")
 
         if not texto_completo and image_count == 0:
-            return "" # Devuelve vacío si no hay contenido
+            return ""
 
-        # 5. Llamar a la API
         model = st.session_state.gemini_model
         response = model.generate_content(prompt_parts)
         
@@ -371,7 +382,6 @@ def _analizar_docx_core(file_bytes_io, nombre_archivo):
 
     except Exception as e:
         print(f"ERROR en el análisis CORE para '{nombre_archivo}': {e}")
-        # Devuelve un mensaje de error que podemos manejar más arriba
         return f"Error procesando el DOCX '{nombre_archivo}': {e}"
 
 @st.cache_data(show_spinner=False)
