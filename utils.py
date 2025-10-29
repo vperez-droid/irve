@@ -10,6 +10,7 @@ import pandas as pd
 import time
 import google.api_core.exceptions
 from PIL import Image
+import google.generativeai as genai
 
 # Importación desde tus módulos
 from drive_utils import find_or_create_folder, get_or_create_lot_folder_id, clean_folder_name
@@ -348,3 +349,40 @@ def analizar_docx_multimodal_con_gemini(file_bytes_io, nombre_archivo):
             return None
         st.success(f"Análisis de '{nombre_archivo}' completado.")
         return analysis_result
+
+def generar_fragmento_individual(model, prompt_info, project_language):
+    """
+    Función segura para hilos que genera un único fragmento de texto.
+    
+    Args:
+        model: El modelo de Gemini.
+        prompt_info (dict): Un diccionario con la información del prompt (prompt_para_asistente, subapartado_referencia, etc.).
+        project_language (str): El idioma para la generación.
+
+    Returns:
+        dict: Un diccionario con el resultado, por ejemplo:
+              {'success': True, 'content': '...', 'subapartado': '...'} o
+              {'success': False, 'error': '...', 'subapartado': '...'}
+    """
+    subapartado = prompt_info.get("subapartado_referencia", "Desconocido")
+    prompt_a_enviar = prompt_info.get("prompt_para_asistente")
+
+    if not prompt_a_enviar:
+        return {'success': False, 'error': 'Prompt vacío.', 'subapartado': subapartado}
+
+    try:
+        # ¡CLAVE! Cada llamada es independiente, no usa un chat persistente.
+        # Es equivalente a iniciar un chat nuevo cada vez.
+        response = model.generate_content(prompt_a_enviar)
+        
+        if not response.candidates:
+            reason = "Bloqueado por filtros de seguridad"
+            if hasattr(response, 'prompt_feedback'):
+                reason = response.prompt_feedback.block_reason.name
+            return {'success': False, 'error': f"Respuesta bloqueada: {reason}", 'subapartado': subapartado}
+        
+        # Guardamos el texto bruto. La limpieza se hará en el hilo principal.
+        return {'success': True, 'content': response.text, 'subapartado': subapartado, 'prompt_id': prompt_info.get("prompt_id", "")}
+
+    except Exception as e:
+        return {'success': False, 'error': str(e), 'subapartado': subapartado}
