@@ -103,10 +103,6 @@ def project_selection_page(go_to_landing, go_to_phase1):
                     st.success(f"¡Proyecto '{new_project_name}' creado! Ya puedes cargar los documentos.")
                     go_to_phase1(); st.rerun()
 
-# =============================================================================
-#           FUNCIÓN phase_1_viability_page
-# =============================================================================
-
 def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.markdown(f"<h3>FASE 1: Análisis de Lotes y Viabilidad</h3>", unsafe_allow_html=True)
     ANALYSIS_FILENAME = "Analisis_de_Viabilidad.docx"
@@ -121,6 +117,38 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     project_folder_id = st.session_state.selected_project['id']
     service = st.session_state.drive_service
     st.info(f"Proyecto activo: **{project_name}**.")
+
+    # ==========================================================
+    # --- INICIO DEL NUEVO BLOQUE DE CÓDIGO ---
+    # ==========================================================
+    with st.container(border=True):
+        st.subheader("🏢 Identificación de la Empresa Cliente")
+        
+        # Inicializa la variable en session_state si no existe, con un valor por defecto.
+        if 'company_name' not in st.session_state:
+            st.session_state.company_name = "La UTE"
+
+        # Cuadro de texto para introducir o cambiar el nombre de la empresa.
+        # El valor se guarda automáticamente en st.session_state.company_name en cada interacción.
+        company_name_input = st.text_input(
+            "Introduce el nombre de la empresa para la que licitas (o 'La UTE' si es una unión temporal):",
+            value=st.session_state.company_name,
+            key="company_name_input"
+        )
+        
+        # Actualiza el estado de la sesión con el valor del input
+        st.session_state.company_name = company_name_input
+
+        # Muestra una confirmación del nombre que se usará.
+        if st.session_state.company_name:
+            st.success(f"Los documentos se generarán para: **{st.session_state.company_name}**")
+        else:
+            st.warning("No se ha especificado un nombre de empresa. Se usará el valor por defecto 'La UTE'.")
+    # ==========================================================
+    # --- FIN DEL NUEVO BLOQUE DE CÓDIGO ---
+    # ==========================================================
+    
+    st.markdown("---")
 
     with st.container(border=True):
         st.subheader("1. Documentos en tu Proyecto")
@@ -302,6 +330,8 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     st.write("")
     st.markdown("---")
     st.button("← Volver a Selección de Proyecto", on_click=go_to_project_selection, use_container_width=True)
+
+
     
 # =============================================================================
 #           FASE 2: ANÁLISIS Y ESTRUCTURA
