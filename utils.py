@@ -323,9 +323,7 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
 
 def _analizar_docx_core(file_bytes_io, nombre_archivo):
     """
-    (FUNCIÓN INTERNA - SIN UI)
-    Esta es la lógica pura de análisis. Extrae contenido y llama a la API de Gemini.
-    ¡VERSIÓN ROBUSTA Y OPTIMIZADA!
+    (FUNCIÓN INTERNA - SIN UI) - VERSIÓN CON MANEJO DE ERRORES DETALLADO
     """
     try:
         doc = docx.Document(file_bytes_io)
@@ -347,29 +345,17 @@ def _analizar_docx_core(file_bytes_io, nombre_archivo):
         skipped_images = 0
         for rel in doc.part.rels.values():
             if "image" in rel.target_ref:
-                
-                # --- INICIO DE LA MEJORA DE ROBUSTEZ ---
                 try:
                     image_part = rel.target_part
                     image_bytes = image_part.blob
                     img = Image.open(io.BytesIO(image_bytes))
-
-                    # --- INICIO DE LA MEJORA DE EFICIENCIA ---
-                    # Reducimos el tamaño de la imagen para no superar el límite de la API
-                    # Mantiene la proporción, con un máximo de 1024px en el lado más largo.
-                    img.thumbnail((1024, 1024)) 
-                    # --- FIN DE LA MEJORA DE EFICIENCIA ---
-
+                    img.thumbnail((1024, 1024))
                     prompt_parts.append(img)
                     image_count += 1
-
                 except Exception as e:
-                    # Esta es la "red de seguridad". Si Pillow no puede abrir la imagen
-                    # (porque es un WMF, etc.), lo ignoramos y continuamos.
                     skipped_images += 1
                     print(f"ADVERTENCIA: Se omitió una imagen no soportada en '{nombre_archivo}'. Error: {e}")
-                # --- FIN DE LA MEJORA DE ROBUSTEZ ---
-
+        
         print(f"Análisis CORE: Se procesaron {image_count} imágenes y se omitieron {skipped_images} en '{nombre_archivo}'.")
 
         if not texto_completo and image_count == 0:
@@ -377,12 +363,18 @@ def _analizar_docx_core(file_bytes_io, nombre_archivo):
 
         model = st.session_state.gemini_model
         response = model.generate_content(prompt_parts)
-        
-        return f"--- INICIO DEL ANÁLISIS MULTIMODAL DEL DOCUMENTO '{nombre_archivo}' ---\n{response.text}\n--- FIN DEL ANÁLISIS ---"
+
+        if not response.candidates:
+            block_reason = "No especificado"
+            if hasattr(response, 'prompt_feedback') and hasattr(response.prompt_feedback, 'block_reason'):
+                block_reason = response.prompt_feedback.block_reason.name
+            return f"Error: La solicitud fue bloqueada por los filtros de seguridad de la API. Razón: {block_reason}"
+
+        return f"--- ANÁLISIS MULTIMODAL DE '{nombre_archivo}' ---\n{response.text}"
 
     except Exception as e:
         print(f"ERROR en el análisis CORE para '{nombre_archivo}': {e}")
-        return f"Error procesando el DOCX '{nombre_archivo}': {e}"
+        return f"Error al procesar el archivo DOCX: {str(e)}"
 
 @st.cache_data(show_spinner=False)
 def get_cached_multimodal_analysis(_file_content_bytes, nombre_archivo):
