@@ -731,9 +731,9 @@ def ejecutar_fase_4_en_background(model, credentials, project_folder_id, active_
         st.error(f"Ocurrió un error crítico durante la unificación de los planes: {e}")
         return False
 
-def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la función es phase_4_page en lugar de phase_5_page
+def phase_3_page(model, go_to_phase2_results, go_to_phase4):
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
-    st.markdown("Gestiona tus guiones y documentos de apoyo. Desde aquí lanzarás el proceso final de preparación para la redacción.")
+    st.markdown("Gestiona tus guiones y documentos de apoyo. Cuando termines, avanza a la siguiente fase para preparar la redacción.")
     st.markdown("---")
 
     # --- 1. Inicialización y Verificación de Sesión ---
@@ -783,9 +783,9 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo: subapartados_a_mostrar.append({"apartado": apartado_titulo, "subapartado": apartado_titulo, "indicaciones": f"Generar guion para {apartado_titulo}"})
 
-
-    # --- 3. Lógica de Clasificación y Subida Automática de Contexto (¡LÓGICA CORREGIDA!) ---
+    # --- 3. Lógica de Clasificación y Subida Automática de Contexto ---
     st.subheader("Central de Documentos de Contexto")
+    # ... (Esta sección no cambia)
     with st.container(border=True):
         st.info("Sube aquí TODOS los documentos de apoyo (PDFs, Word con imágenes, etc.). La IA los analizará y asignará al subapartado correcto automáticamente.")
         context_files = st.file_uploader(
@@ -815,7 +815,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la
                             
                             contenido_para_gemini = [PROMPT_CLASIFICAR_DOCUMENTO]
 
-                            # --- INICIO DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
                             if 'wordprocessingml' in mime_type:
                                 analisis_multimodal = analizar_docx_multimodal_con_gemini(file_bytes_io, file_name)
                                 if analisis_multimodal and "Error" not in analisis_multimodal:
@@ -828,7 +827,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la
                             else:
                                 contenido_para_gemini.append("--- CONTENIDO DEL DOCUMENTO A CLASIFICAR (ORIGINAL) ---")
                                 contenido_para_gemini.append({"mime_type": mime_type, "data": file.getvalue()})
-                            # --- FIN DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
 
                             contenido_para_gemini.append("--- ÍNDICE DE SUBAPARTADOS DISPONIBLES ---")
                             contenido_para_gemini.append(json_titulos)
@@ -865,19 +863,18 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la
                 st.session_state.uploader_key += 1 
                 st.rerun()
 
-    # (El resto de la función phase_3_page, que gestiona la UI de los guiones, 
-    # no necesita cambios. Aquí se pega el código original sin modificaciones.)
-
     if st.session_state.classification_results:
         st.subheader("Resultados de la Última Clasificación")
+        # ... (Esta sección no cambia)
         with st.container(border=True):
             df_results = pd.DataFrame(st.session_state.classification_results)
             df_results.rename(columns={'filename': 'Archivo', 'destination': 'Subapartado Asignado'}, inplace=True)
             st.dataframe(df_results, use_container_width=True, hide_index=True)
             if st.button("Limpiar resultados", key="clear_results"):
                 st.session_state.classification_results = []; st.rerun()
-    
+
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
+    # ... (Estas funciones de handle_*, ejecutar_*, etc., no cambian)
     def handle_confirm_regeneration(titulo, file_id_borrador, feedback):
         if not feedback.strip(): st.warning("Por favor, introduce tu feedback para la re-generación."); return
         with st.spinner(f"Re-generando '{titulo}' con tu feedback..."):
@@ -897,7 +894,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la
                     "--- FEEDBACK DEL CLIENTE (Tus correcciones y comentarios) ---\n" + feedback
                 ]
                 
-                # Re-analizar los pliegos (incluyendo DOCX) para el contexto
                 for file_info in pliegos_en_drive:
                     file_content_bytes = download_file_from_drive_cached(service, file_info['id'])
                     if 'wordprocessingml' in file_info['mimeType']:
@@ -945,11 +941,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la
             with st.spinner(f"Subiendo {len(files)} archivo(s) de contexto..."):
                 for file_obj in files: upload_file_to_drive(service, file_obj, destination_folder_id)
                 st.toast("Archivos de contexto añadidos."); st.rerun()
-
     # --- 5. Renderizado de la Interfaz de Usuario ---
     st.markdown("---")
     st.subheader("Gestión de Guiones de Subapartados")
-    
+    # ... (Toda la lógica de la UI para mostrar los guiones, los botones de generar, borrar, etc., no cambia)
     with st.spinner("Sincronizando guiones y archivos de contexto con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         carpetas_existentes = {f['name']: f['id'] for f in get_files_in_project(service, guiones_folder_id) if f['mimeType'] == 'application/vnd.google-apps.folder'}
@@ -1079,40 +1074,19 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la
                                 )
                                 if success: st.rerun()
 
-    # --- 6. Navegación de la página (LÓGICA ACTUALIZADA) ---
+    # --- 6. NAVEGACIÓN DE PÁGINA (LÓGICA SIMPLIFICADA) ---
     st.markdown("---")
     
     with st.container(border=True):
-        st.subheader("Finalizar Fase y Preparar Redacción")
-        st.info("Este proceso generará todos los planes de prompts para los guiones existentes y los unificará. Puede tardar varios minutos. No recargues la página.")
-
-        if st.button("Preparar Redacción y Avanzar a Fase 4 →", type="primary", use_container_width=True): #<-- El botón debe ir a la fase 4 y no la 5.
-            progress_placeholder = st.empty()
-            with progress_placeholder.container():
-                with st.spinner("Ejecutando proceso de preparación de prompts..."):
-                    credentials = get_credentials()
-                    project_language = st.session_state.get('project_language', 'Español')
-
-                    if not credentials:
-                        st.error("Error de autenticación. No se puede continuar.")
-                    else:
-                        # NOTA: La función 'ejecutar_fase_4_en_background' ahora se llama desde aquí.
-                        # Asegúrate de que esta función existe en tu ui_pages.py o muévela si es necesario.
-                        success = ejecutar_fase_4_en_background(
-                            model, credentials, project_folder_id, active_lot_folder_id,
-                            subapartados_a_mostrar, st.session_state.generated_structure,
-                            project_language
-                        )
-
-                        if success:
-                            progress_placeholder.empty()
-                            st.success("¡Preparación completada! Redirigiendo a la fase de redacción...")
-                            st.balloons()
-                            time.sleep(3)
-                            go_to_phase4() # <-- Corregido para ir a Fase 4
-                            st.rerun()
-                        else:
-                            st.error("El proceso de preparación falló. Revisa los mensajes de error. No se avanzará a la siguiente fase.")
+        st.subheader("Finalizar Fase y Avanzar")
+        st.info("Una vez que hayas generado y revisado todos los guiones necesarios, avanza a la siguiente fase para preparar los prompts detallados para la redacción final.")
+        
+        # Este botón ahora solo se encarga de la navegación a la Fase 4.
+        # La lógica de 'on_click' se encarga de cambiar la página en st.session_state.
+        st.button("Avanzar a Fase 4 (Preparación de Prompts) →", 
+                        on_click=go_to_phase4, 
+                        type="primary", 
+                        use_container_width=True)
 
     st.markdown("---")
     st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
