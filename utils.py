@@ -321,9 +321,15 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
 #         NUEVA ARQUITECTURA DE ANÁLISIS MULTIMODAL CON CACHÉ
 # -----------------------------------------------------------------------------
 
+import google.generativeai as genai
+import docx
+import io
+import streamlit as st
+from PIL import Image
+
 def _analizar_docx_core(file_bytes_io, nombre_archivo):
     """
-    (FUNCIÓN INTERNA - SIN UI) - VERSIÓN CON MANEJO DE ERRORES DETALLADO
+    (FUNCIÓN INTERNA - SIN UI) - VERSIÓN FINAL CON MANEJO DE ERRORES Y FILTROS DE SEGURIDAD DESACTIVADOS
     """
     try:
         doc = docx.Document(file_bytes_io)
@@ -361,14 +367,39 @@ def _analizar_docx_core(file_bytes_io, nombre_archivo):
         if not texto_completo and image_count == 0:
             return ""
 
+        # --- ¡CAMBIO CLAVE! AÑADIMOS LA CONFIGURACIÓN DE SEGURIDAD ---
+        # Esto le dice a la API que no bloquee contenido en ninguna de las categorías de seguridad.
+        safety_settings = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE",
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE",
+            },
+        ]
+        # --- FIN DEL CAMBIO ---
+
         model = st.session_state.gemini_model
-        response = model.generate_content(prompt_parts)
+        # Pasamos la configuración de seguridad en la llamada a la API
+        response = model.generate_content(prompt_parts, safety_settings=safety_settings)
 
         if not response.candidates:
             block_reason = "No especificado"
             if hasattr(response, 'prompt_feedback') and hasattr(response.prompt_feedback, 'block_reason'):
                 block_reason = response.prompt_feedback.block_reason.name
-            return f"Error: La solicitud fue bloqueada por los filtros de seguridad de la API. Razón: {block_reason}"
+            
+            # Este error ahora solo debería aparecer por razones que no sean los filtros de contenido estándar.
+            return f"Error: La API bloqueó la respuesta por una razón fundamental. Razón: {block_reason}"
 
         return f"--- ANÁLISIS MULTIMODAL DE '{nombre_archivo}' ---\n{response.text}"
 
