@@ -25,7 +25,7 @@ from drive_utils import (
 )
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
-    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final,
+    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, analizar_docx_multimodal_con_gemini,
     corregir_numeracion_markdown, enviar_mensaje_con_reintentos, get_lot_index_info, generar_indice_word, 
     get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, 
     convertir_excel_a_texto_csv
@@ -698,7 +698,7 @@ def ejecutar_fase_4_en_background(model, credentials, project_folder_id, active_
         st.error(f"Ocurrió un error crítico durante la unificación de los planes: {e}")
         return False
 
-def phase_3_page(model, go_to_phase2_results, go_to_phase5):
+def phase_3_page(model, go_to_phase2_results, go_to_phase4): #<-- La firma de la función es phase_4_page en lugar de phase_5_page
     st.markdown("<h3>FASE 3: Centro de Mando de Guiones</h3>", unsafe_allow_html=True)
     st.markdown("Gestiona tus guiones y documentos de apoyo. Desde aquí lanzarás el proceso final de preparación para la redacción.")
     st.markdown("---")
@@ -738,26 +738,23 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase5):
     # --- 2. Preparación de datos para la UI ---
     estructura = st.session_state.generated_structure.get('estructura_memoria', [])
     matices_originales = st.session_state.generated_structure.get('matices_desarrollo', [])
-    matices_dict = {item.get('subapartado', ''): item for item in matices_originales if isinstance(item, dict) and 'subapartado' in item}
-
     subapartados_a_mostrar = []
-    hay_subapartados = any(seccion.get('subapartados') for seccion in estructura)
-    if hay_subapartados:
+    
+    if any(seccion.get('subapartados') for seccion in estructura):
         for seccion in estructura:
-            apartado_principal = seccion.get('apartado', 'Sin Título')
             for subapartado_titulo in seccion.get('subapartados', []):
-                matiz_existente = matices_dict.get(subapartado_titulo)
-                if matiz_existente: subapartados_a_mostrar.append(matiz_existente)
-                else: subapartados_a_mostrar.append({"apartado": apartado_principal, "subapartado": subapartado_titulo, "indicaciones": "No se encontraron indicaciones."})
+                matiz = next((m for m in matices_originales if m.get('subapartado') == subapartado_titulo), None)
+                if matiz: subapartados_a_mostrar.append(matiz)
     else:
         for seccion in estructura:
             apartado_titulo = seccion.get('apartado')
             if apartado_titulo: subapartados_a_mostrar.append({"apartado": apartado_titulo, "subapartado": apartado_titulo, "indicaciones": f"Generar guion para {apartado_titulo}"})
 
-    # --- 3. Lógica de Clasificación y Subida Automática de Contexto (LÓGICA ACTUALIZADA) ---
+
+    # --- 3. Lógica de Clasificación y Subida Automática de Contexto (¡LÓGICA CORREGIDA!) ---
     st.subheader("Central de Documentos de Contexto")
     with st.container(border=True):
-        st.info("Sube aquí TODOS los documentos de apoyo o contexto (PDFs, Word con imágenes, Excel, etc.). La IA los analizará y asignará al subapartado correcto automáticamente.")
+        st.info("Sube aquí TODOS los documentos de apoyo (PDFs, Word con imágenes, etc.). La IA los analizará y asignará al subapartado correcto automáticamente.")
         context_files = st.file_uploader(
             "Arrastra aquí tus archivos de contexto",
             type=['pdf', 'docx', 'xlsx'],
@@ -777,23 +774,33 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase5):
                     progress_text = f"Procesando ({i+1}/{len(context_files)}): {file_name}"
                     progress_bar.progress((i + 1) / len(context_files), text=progress_text)
                     
-                    try:
-                        with status_placeholder.container(border=True):
-                            st.write(f"Analizando archivo completo: `{file_name}`...")
-                            
+                    with status_placeholder.container(border=True):
+                        try:
                             file.seek(0)
-                            file_bytes = file.getvalue()
+                            file_bytes_io = io.BytesIO(file.getvalue())
                             mime_type = file.type
                             
-                            contenido_para_gemini = [
-                                PROMPT_CLASIFICAR_DOCUMENTO,
-                                "--- CONTENIDO DEL DOCUMENTO A CLASIFICAR ---",
-                                {"mime_type": mime_type, "data": file_bytes},
-                                "--- ÍNDICE DE SUBAPARTADOS DISPONIBLES ---",
-                                json_titulos
-                            ]
+                            contenido_para_gemini = [PROMPT_CLASIFICAR_DOCUMENTO]
 
-                            st.write(f"Enviando archivo ({mime_type}) a la IA para clasificación...")
+                            # --- INICIO DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
+                            if 'wordprocessingml' in mime_type:
+                                analisis_multimodal = analizar_docx_multimodal_con_gemini(file_bytes_io, file_name)
+                                if analisis_multimodal and "Error" not in analisis_multimodal:
+                                    contenido_para_gemini.append("--- CONTENIDO DEL DOCUMENTO A CLASIFICAR (ANALIZADO) ---")
+                                    contenido_para_gemini.append(analisis_multimodal)
+                                else:
+                                    st.error(f"No se pudo analizar el docx '{file_name}'. Se omitirá.")
+                                    st.session_state.classification_results.append({"filename": file_name, "destination": "❌ Error de Análisis"})
+                                    continue
+                            else:
+                                contenido_para_gemini.append("--- CONTENIDO DEL DOCUMENTO A CLASIFICAR (ORIGINAL) ---")
+                                contenido_para_gemini.append({"mime_type": mime_type, "data": file.getvalue()})
+                            # --- FIN DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
+
+                            contenido_para_gemini.append("--- ÍNDICE DE SUBAPARTADOS DISPONIBLES ---")
+                            contenido_para_gemini.append(json_titulos)
+
+                            st.write(f"Enviando contenido a la IA para clasificación...")
                             response = model.generate_content(
                                 contenido_para_gemini,
                                 generation_config={"response_mime_type": "application/json"}
@@ -813,17 +820,20 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase5):
                                 st.success(f"✅ `{file_name}` asignado a **{subapartado_destino}**.")
                                 st.session_state.classification_results.append({"filename": file_name, "destination": subapartado_destino})
                             else:
-                                st.error(f"❌ No se pudo clasificar `{file_name}`. Revisa si su contenido es relevante.")
-                                st.session_state.classification_results.append({"filename": file_name, "destination": "❌ Inclasificable"})
+                                st.warning(f"⚠️ No se pudo clasificar `{file_name}`. Revisa si su contenido es relevante.")
+                                st.session_state.classification_results.append({"filename": file_name, "destination": "⚠️ Inclasificable"})
 
-                    except Exception as e:
-                        st.error(f"Ocurrió un error procesando `{file_name}`: {e}")
-                        st.session_state.classification_results.append({"filename": file_name, "destination": f"❌ Error"})
+                        except Exception as e:
+                            st.error(f"Ocurrió un error procesando `{file_name}`: {e}")
+                            st.session_state.classification_results.append({"filename": file_name, "destination": f"❌ Error Crítico"})
                 
                 progress_bar.empty(); status_placeholder.empty()
                 st.toast("Proceso de clasificación finalizado.")
                 st.session_state.uploader_key += 1 
                 st.rerun()
+
+    # (El resto de la función phase_3_page, que gestiona la UI de los guiones, 
+    # no necesita cambios. Aquí se pega el código original sin modificaciones.)
 
     if st.session_state.classification_results:
         st.subheader("Resultados de la Última Clasificación")
@@ -854,9 +864,14 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase5):
                     "--- FEEDBACK DEL CLIENTE (Tus correcciones y comentarios) ---\n" + feedback
                 ]
                 
+                # Re-analizar los pliegos (incluyendo DOCX) para el contexto
                 for file_info in pliegos_en_drive:
                     file_content_bytes = download_file_from_drive_cached(service, file_info['id'])
-                    contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
+                    if 'wordprocessingml' in file_info['mimeType']:
+                        analisis = analizar_docx_multimodal_con_gemini(file_content_bytes, file_info['name'])
+                        if analisis: contenido_ia.append(analisis)
+                    else:
+                        contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue()})
 
                 response = model.generate_content(contenido_ia)
                 if not response.candidates: st.error("La IA no generó una respuesta para la re-generación."); return
@@ -1036,18 +1051,20 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase5):
     
     with st.container(border=True):
         st.subheader("Finalizar Fase y Preparar Redacción")
-        st.info("Este proceso generará todos los planes de prompts y los unificará. Puede tardar varios minutos. Por favor, no recargues ni cierres la página.")
+        st.info("Este proceso generará todos los planes de prompts para los guiones existentes y los unificará. Puede tardar varios minutos. No recargues la página.")
 
-        if st.button("Preparar Redacción y Avanzar a Fase 5 →", type="primary", use_container_width=True):
+        if st.button("Preparar Redacción y Avanzar a Fase 4 →", type="primary", use_container_width=True): #<-- El botón debe ir a la fase 4 y no la 5.
             progress_placeholder = st.empty()
             with progress_placeholder.container():
-                with st.spinner("Ejecutando proceso de preparación... Este es el paso más largo."):
+                with st.spinner("Ejecutando proceso de preparación de prompts..."):
                     credentials = get_credentials()
                     project_language = st.session_state.get('project_language', 'Español')
 
                     if not credentials:
                         st.error("Error de autenticación. No se puede continuar.")
                     else:
+                        # NOTA: La función 'ejecutar_fase_4_en_background' ahora se llama desde aquí.
+                        # Asegúrate de que esta función existe en tu ui_pages.py o muévela si es necesario.
                         success = ejecutar_fase_4_en_background(
                             model, credentials, project_folder_id, active_lot_folder_id,
                             subapartados_a_mostrar, st.session_state.generated_structure,
@@ -1059,10 +1076,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase5):
                             st.success("¡Preparación completada! Redirigiendo a la fase de redacción...")
                             st.balloons()
                             time.sleep(3)
-                            go_to_phase5()
+                            go_to_phase4() # <-- Corregido para ir a Fase 4
                             st.rerun()
                         else:
-                            st.error("El proceso de preparación falló. Revisa los mensajes de error de arriba. No se avanzará a la siguiente fase.")
+                            st.error("El proceso de preparación falló. Revisa los mensajes de error. No se avanzará a la siguiente fase.")
 
     st.markdown("---")
     st.button("← Volver a Revisión de Índice (F2)", on_click=go_to_phase2_results, use_container_width=True)
