@@ -1,21 +1,8 @@
-# app.py (VERSIÓN OPTIMIZADA)
-# -----------------------------------------------------------------------------
-# Este es el punto de entrada principal de la aplicación Streamlit.
-# Actúa como el "director de orquesta": gestiona la autenticación, el estado
-# de la sesión, la navegación y llama a la función de la página correcta
-# desde el módulo ui_pages.
-# -----------------------------------------------------------------------------
 
 import streamlit as st
 import google.generativeai as genai
 import json
 import time
-
-# =============================================================================
-#           BLOQUE DE IMPORTACIONES DE OTROS MÓDulos
-# =============================================================================
-
-# La llamada a build_drive_service ahora usará la versión cacheada de auth.py
 from auth import get_credentials, build_drive_service
 from ui_pages import (
     landing_page, 
@@ -28,18 +15,18 @@ from ui_pages import (
     phase_5_page,
     phase_6_page
 )
+
 from prompts import PROMPT_PLIEGOS
 
-# Las funciones de utils no cambian
 from utils import (
     limpiar_respuesta_json, 
     convertir_excel_a_texto_csv, 
+    analizar_docx_multimodal_con_gemini, # <-- ¡IMPORTACIÓN CLAVE AÑADIDA!
     get_lot_context, 
     OPCION_ANALISIS_GENERAL
 )
 
-# Todas estas llamadas ahora usarán las versiones cacheadas de drive_utils.py,
-# haciendo la app mucho más rápida en operaciones repetitivas.
+
 from drive_utils import find_or_create_folder, get_files_in_project, download_file_from_drive_cached
 
 # =============================================================================
@@ -95,10 +82,8 @@ def back_to_project_selection_and_cleanup():
 
 def handle_full_regeneration(model):
     """
-    Función que genera un índice desde cero analizando los archivos de 'Pliegos'.
-    NOTA DE OPTIMIZACIÓN: Esta función ahora es mucho más rápida en ejecuciones
-    repetidas porque las funciones subyacentes (get_files_in_project, 
-    download_file_from_drive) están cacheadas.
+    Función que genera un índice desde cero analizando los archivos de 'Pliegos',
+    ahora con capacidad para procesar .docx con texto e imágenes.
     """
     if not st.session_state.get('drive_service') or not st.session_state.get('selected_project'):
         st.error("Error de sesión. No se puede iniciar la regeneración."); return False
@@ -109,7 +94,6 @@ def handle_full_regeneration(model):
             service = st.session_state.drive_service
             project_folder_id = st.session_state.selected_project['id']
             
-            # Estas llamadas ahora usan el caché de Streamlit
             pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
             document_files = get_files_in_project(service, pliegos_folder_id)
 
@@ -122,22 +106,32 @@ def handle_full_regeneration(model):
             
             contenido_ia = [prompt_con_idioma]
 
+            # --- INICIO DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
             for file in document_files:
-                # Esta descarga será casi instantánea después de la primera vez
                 file_content_bytes = download_file_from_drive_cached(service, file['id'])
                 nombre_archivo = file['name']
+                mime_type = file['mimeType']
                 
                 if nombre_archivo.lower().endswith('.xlsx'):
                     texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
                     if texto_csv:
                         contenido_ia.append(texto_csv)
-                else:
-                    contenido_ia.append({"mime_type": file['mimeType'], "data": file_content_bytes.getvalue()})
 
-            # La llamada a la API sigue siendo el paso que consume más tiempo, como es de esperar.
+                elif 'wordprocessingml' in mime_type:
+                    # Si es un .docx, usamos la nueva función multimodal
+                    with st.spinner(f"Analizando '{nombre_archivo}' (texto e imágenes)..."):
+                        analisis_multimodal = analizar_docx_multimodal_con_gemini(file_content_bytes, nombre_archivo)
+                        if analisis_multimodal and "Error" not in analisis_multimodal:
+                            contenido_ia.append(analisis_multimodal)
+                else:
+                    # Para otros tipos (PDF, etc.), los enviamos directamente.
+                    # Gemini 2.5 Flash los maneja de forma nativa.
+                    contenido_ia.append({"mime_type": mime_type, "data": file_content_bytes.getvalue()})
+            # --- FIN DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
+
+            # La llamada a la API sigue siendo el paso que consume más tiempo
             response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
             
-            # El resto de la lógica de manejo de errores no cambia
             if not response or not response.candidates:
                 st.error("La IA no generó una respuesta. Esto puede deberse a filtros de seguridad o un problema temporal.")
                 if response and hasattr(response, 'prompt_feedback'): st.code(f"Razón del bloqueo: {response.prompt_feedback}")
@@ -172,16 +166,13 @@ if not credentials:
     landing_page()
 else:
     try:
-        # OPTIMIZACIÓN: build_drive_service ahora está cacheada (@st.cache_resource).
-        # El objeto de servicio se crea una sola vez por sesión, ahorrando tiempo.
         if 'drive_service' not in st.session_state or st.session_state.drive_service is None:
             st.session_state.drive_service = build_drive_service(credentials)
         
         if 'gemini_model' not in st.session_state:
             genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
             
-            # OPTIMIZACIÓN: Se añade una 'system_instruction' para reducir tokens.
-            # Esto establece el rol del modelo una vez, evitando repetirlo en cada prompt.
+            # --- ¡CAMBIO CLAVE! Se actualiza al modelo multimodal Gemini 2.5 Flash ---
             st.session_state.gemini_model = genai.GenerativeModel(
                 'models/gemini-2.5-flash',
                 system_instruction="Eres un asistente experto en la preparación de memorias técnicas para licitaciones. Tu objetivo es generar documentos estratégicos, precisos y profesionales en el idioma solicitado, siguiendo estrictamente las instrucciones y formatos requeridos."
