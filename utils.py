@@ -11,7 +11,7 @@ import time
 import google.api_core.exceptions
 from PIL import Image
 
-# <-- ¡CORRECCIÓN APLICADA AQUÍ! AÑADIMOS LA IMPORTACIÓN DE 'clean_folder_name'
+# Importación desde tus módulos
 from drive_utils import find_or_create_folder, get_or_create_lot_folder_id, clean_folder_name
 
 # =============================================================================
@@ -20,7 +20,6 @@ from drive_utils import find_or_create_folder, get_or_create_lot_folder_id, clea
 
 CARACTERES_POR_PAGINA_MIN = 3500
 CARACTERES_POR_PAGINA_MAX = 3800
-
 
 CONTEXTO_LOTE_TEMPLATE = """
 
@@ -32,27 +31,18 @@ OPCION_ANALISIS_GENERAL = "Análisis general (no centrarse en un lote)"
 def get_lot_index_info(service, project_folder_id, selected_lot):
     """
     Calcula el ID de la carpeta y el nombre de archivo específico para el índice.
-    Si selected_lot es OPCION_ANALISIS_GENERAL, 'SIN_LOTES', o None, usa la carpeta de la aplicación
-    del proyecto raíz y el nombre de archivo 'ultimo_indice.json'.
-    Si es un lote, usa la carpeta de la aplicación DENTRO del lote y un nombre único.
     """
     is_general_analysis = (selected_lot == OPCION_ANALISIS_GENERAL or selected_lot is None)
 
     if is_general_analysis:
-        # 1. Caso SIN LOTES (Comportamiento por defecto)
         app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
         index_filename = "ultimo_indice.json"
         target_folder_id = app_folder_id
     else:
-        # 2. Caso CON LOTES (Comportamiento por lote)
         lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot)
-        
         target_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=lot_folder_id)
-        
         match = re.search(r'Lote\s*(\d+|\w+)', selected_lot, re.IGNORECASE)
-        # Esta es la línea que antes fallaba. Ahora 'clean_folder_name' es reconocida.
         lot_suffix = match.group(1).replace(' ', '_') if match else clean_folder_name(selected_lot).split('_')[0]
-        
         index_filename = f"ultimo_indice_lote{lot_suffix}.json"
 
     return target_folder_id, index_filename
@@ -84,40 +74,27 @@ def enviar_mensaje_con_reintentos(chat, prompt_a_enviar, reintentos=5, delay=60)
     
 def convertir_excel_a_texto_csv(archivo_excel_bytes, nombre_archivo):
     """
-    Lee los bytes de un archivo Excel (.xlsx) y convierte todas sus hojas a una
-    única cadena de texto en formato CSV.
+    Lee los bytes de un archivo Excel (.xlsx) y los convierte a texto CSV.
     """
     try:
         xls = pd.ExcelFile(archivo_excel_bytes)
         texto_final_csv = ""
-
-        if len(xls.sheet_names) > 1:
-            texto_final_csv += f"--- Inicio del contenido del archivo Excel '{nombre_archivo}' (múltiples hojas) ---\n\n"
-            for nombre_hoja in xls.sheet_names:
-                df = pd.read_excel(xls, sheet_name=nombre_hoja)
-                texto_final_csv += f"--- Contenido de la Hoja: '{nombre_hoja}' ---\n"
-                texto_final_csv += df.to_csv(index=False)
-                texto_final_csv += "\n\n"
-            texto_final_csv += f"--- Fin del contenido del archivo Excel '{nombre_archivo}' ---\n"
-        else:
-            df = pd.read_excel(xls)
-            texto_final_csv += f"--- Inicio del contenido del archivo Excel '{nombre_archivo}' ---\n"
+        for nombre_hoja in xls.sheet_names:
+            df = pd.read_excel(xls, sheet_name=nombre_hoja)
+            texto_final_csv += f"--- Contenido de la Hoja: '{nombre_hoja}' del archivo '{nombre_archivo}' ---\n"
             texto_final_csv += df.to_csv(index=False)
-            texto_final_csv += f"\n--- Fin del contenido del archivo Excel '{nombre_archivo}' ---\n"
-            
+            texto_final_csv += "\n\n"
         return texto_final_csv
-
     except Exception as e:
         st.error(f"No se pudo procesar el archivo Excel '{nombre_archivo}': {e}")
         return ""
         
 def limpiar_respuesta_json(texto_sucio):
     """
-    Limpia de forma muy agresiva la respuesta de texto de la IA para extraer un objeto JSON válido.
+    Extrae un objeto JSON de una cadena de texto potencialmente sucia.
     """
     if not isinstance(texto_sucio, str):
         return ""
-
     try:
         match = re.search(r'```(json)?\s*(\{.*?\})\s*```', texto_sucio, re.DOTALL)
         if match:
@@ -127,34 +104,28 @@ def limpiar_respuesta_json(texto_sucio):
             end_index = texto_sucio.rfind('}')
             if start_index != -1 and end_index != -1 and end_index > start_index:
                 return texto_sucio[start_index:end_index + 1]
-            else:
-                return ""
+            return ""
     except Exception:
         return ""
 
 def limpiar_respuesta_final(texto_ia):
     """
-    Limpia de forma agresiva la respuesta de la IA para la redacción final.
+    Limpia la respuesta de la IA para la redacción final, eliminando código y frases introductorias.
     """
     if not isinstance(texto_ia, str):
         return ""
-    texto_limpio = re.sub(r'Este código crea.*?visualizar el diagrama\.', '', texto_ia, flags=re.DOTALL | re.IGNORECASE)
-    texto_limpio = re.sub(r'El código HTML proporcionado genera.*?aún más:', '', texto_limpio, flags=re.DOTALL | re.IGNORECASE)
-    texto_limpio = re.sub(r'```(json|html|mermaid|text)?\s*.*?```', '', texto_limpio, flags=re.DOTALL)
+    texto_limpio = re.sub(r'```(json|html|mermaid|text)?.*?```', '', texto_ia, flags=re.DOTALL)
     frases_a_eliminar = [
-        r'^\s*Aquí tienes el contenido.*?:',
-        r'^\s*Claro, aquí está la redacción para.*?:',
-        r'^\s*A continuación se presenta el contenido detallado:',
-        r'^\s*##\s*.*?$'
+        r'^\s*Aquí tienes el contenido.*?:', r'^\s*Claro, aquí está la redacción para.*?:',
+        r'^\s*A continuación se presenta el contenido detallado:', r'^\s*##\s*.*?$'
     ]
     for patron in frases_a_eliminar:
         texto_limpio = re.sub(patron, '', texto_limpio, flags=re.IGNORECASE | re.MULTILINE)
-
     return texto_limpio.strip()
 
 def corregir_numeracion_markdown(texto_markdown):
     """
-    Recorre un texto en Markdown y corrige las listas numeradas para que sean consecutivas.
+    Corrige las listas numeradas en un texto Markdown para que sean consecutivas.
     """
     lineas_corregidas = []
     contador_lista = 0
@@ -180,17 +151,12 @@ def corregir_numeracion_markdown(texto_markdown):
 # =============================================================================
 
 def natural_sort_key(s):
-    """
-    Crea una clave para el ordenamiento 'natural' de cadenas.
-    """
-    if not isinstance(s, str):
-        return [s]
+    """Crea una clave para el ordenamiento 'natural' de cadenas."""
+    if not isinstance(s, str): return [s]
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 def agregar_markdown_a_word(documento, texto_markdown):
-    """
-    Convierte una cadena de texto en formato Markdown a un documento de Word.
-    """
+    """Convierte una cadena de Markdown a un documento de Word."""
     patron_encabezado = re.compile(r'^(#+)\s+(.*)')
     patron_lista_numerada = re.compile(r'^\s*\d+\.\s+')
     patron_lista_viñeta = re.compile(r'^\s*[\*\-]\s+')
@@ -224,9 +190,7 @@ def agregar_markdown_a_word(documento, texto_markdown):
             procesar_linea_con_negritas(p, linea_limpia)
 
 def generar_indice_word(documento, estructura_memoria):
-    """
-    Añade un índice (Tabla de Contenidos) al principio de un documento de Word.
-    """
+    """Añade un índice al principio de un documento de Word."""
     documento.add_heading("Índice", level=1)
     if not estructura_memoria:
         documento.add_paragraph("No se encontró una estructura para generar el índice.")
@@ -246,16 +210,12 @@ def generar_indice_word(documento, estructura_memoria):
 # =============================================================================
 
 def mostrar_indice_desplegable(estructura, matices=None):
-    """
-    Muestra una estructura de índice en Streamlit con apartados desplegables.
-    """
+    """Muestra una estructura de índice en Streamlit con apartados desplegables."""
     if not estructura:
         st.warning("La estructura de la memoria está vacía.")
         return
 
-    if not matices:
-        matices = []
-    matices_dict = {item.get('subapartado'): item.get('indicaciones', 'No se encontraron indicaciones.') for item in matices}
+    matices_dict = {item.get('subapartado'): item.get('indicaciones', 'No se encontraron indicaciones.') for item in (matices or [])}
 
     for seccion in estructura:
         apartado_principal = seccion.get('apartado', 'Sin Título')
@@ -266,25 +226,35 @@ def mostrar_indice_desplegable(estructura, matices=None):
             else:
                 for subapartado in subapartados:
                     st.markdown(f" L &nbsp; **{subapartado}**")
-                    indicaciones = matices_dict.get(subapartado)
-                    if indicaciones:
+                    if indicaciones := matices_dict.get(subapartado):
                         with st.container(border=True):
                             st.info(indicaciones)
                     st.write("")
 
 # =============================================================================
-#           FUNCIONES DE CONVERSIÓN HTML A IMAGEN
+#           FUNCIONES DE CONVERSIÓN HTML A IMAGEN (CORREGIDAS)
 # =============================================================================
 
 def wrap_html_fragment(html_fragment):
     """
+    (VERSIÓN CORREGIDA)
     Envuelve un fragmento de HTML en una estructura completa con estilos CSS.
+    Se elimina la dependencia de Google Fonts (@import) para evitar errores de red.
     """
     if html_fragment.strip().startswith('<!DOCTYPE html>'):
         return html_fragment
+    
     css_styles = """
-        @import url('https://fonts.googleapis.com/css2?family=Urbanist:wght@400;600;700&display=swap');
-        body { font-family: 'Urbanist', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; padding: 20px; width: 800px; box-sizing: border-box; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"; 
+            background-color: #f0f2f5; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            padding: 20px; 
+            width: 800px; 
+            box-sizing: border-box; 
+        }
         .card { background-color: white; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); padding: 25px; width: 100%; max-width: 750px; border-top: 5px solid #0046C6; }
         h2 { color: #0046C6; text-align: center; margin-top: 0; font-size: 24px; font-weight: 700; }
         ul { list-style-type: none; padding: 0; }
@@ -295,6 +265,7 @@ def wrap_html_fragment(html_fragment):
         th { background-color: #f5f5f5; font-weight: 600; color: #333; }
         tr:nth-child(even) { background-color: #f9f9f9; }
     """
+    
     return f"""
     <!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Visual Element</title><style>{css_styles}</style></head>
     <body>{html_fragment}</body></html>
@@ -307,137 +278,73 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
     try:
         path_wkhtmltoimage = os.popen('which wkhtmltoimage').read().strip()
         if not path_wkhtmltoimage:
-            st.error("❌ 'wkhtmltoimage' no encontrado. Asegúrate de que 'wkhtmltopdf' está en packages.txt.")
+            st.error("❌ 'wkhtmltoimage' no encontrado. Asegúrate de que 'wkhtmltopdf' está en tu archivo packages.txt.")
             return None
         config = imgkit.config(wkhtmltoimage=path_wkhtmltoimage)
         options = {'format': 'png', 'encoding': "UTF-8", 'width': '800', 'quiet': ''}
+        
         imgkit.from_string(html_string, output_filename, config=config, options=options)
+        
         return output_filename if os.path.exists(output_filename) else None
     except Exception as e:
         st.error(f"Error al convertir HTML a imagen: {e}")
         return None
 
-# -----------------------------------------------------------------------------
-#         NUEVA ARQUITECTURA DE ANÁLISIS MULTIMODAL CON CACHÉ
-# -----------------------------------------------------------------------------
-
-import google.generativeai as genai
-import docx
-import io
-import streamlit as st
-from PIL import Image
+# =============================================================================
+#         ARQUITECTURA DE ANÁLISIS MULTIMODAL CON CACHÉ
+# =============================================================================
 
 def _analizar_docx_core(file_bytes_io, nombre_archivo):
-    """
-    (FUNCIÓN INTERNA - SIN UI) - VERSIÓN FINAL CON MANEJO DE ERRORES Y FILTROS DE SEGURIDAD DESACTIVADOS
-    """
+    """(FUNCIÓN INTERNA) Analiza un .docx extrayendo texto e imágenes."""
     try:
         doc = docx.Document(file_bytes_io)
         prompt_parts = [
-            (
-                "Eres un analista experto de documentos de licitación. A continuación, te proporciono el contenido completo de un documento, "
-                "desglosado en texto e imágenes en el orden en que aparecen. Tu tarea es analizar todo el contenido de forma integral y "
-                "generar un único resumen de texto enriquecido que capture toda la información clave. Describe explícitamente el contenido de las imágenes "
-                "(diagramas, esquemas, fotos) y explica cómo se relacionan con el texto circundante. El resultado debe ser un texto coherente "
-                "que pueda ser utilizado por otro modelo de IA para entender completamente el documento original sin necesidad de verlo.\n\n"
-                "--- INICIO DEL CONTENIDO DEL DOCUMENTO ---\n"
-            )
+            "Eres un analista experto de documentos de licitación. Analiza el siguiente contenido de un documento (texto e imágenes) y genera un resumen de texto enriquecido que capture toda la información clave, describiendo las imágenes en su contexto.\n\n--- INICIO DEL DOCUMENTO ---\n"
         ]
         texto_completo = "\n".join([p.text for p in doc.paragraphs if p.text.strip()])
         prompt_parts.append(texto_completo)
         prompt_parts.append("\n--- FIN DEL TEXTO / INICIO DE LAS IMÁGENES ---")
 
         image_count = 0
-        skipped_images = 0
         for rel in doc.part.rels.values():
             if "image" in rel.target_ref:
                 try:
-                    image_part = rel.target_part
-                    image_bytes = image_part.blob
+                    image_bytes = rel.target_part.blob
                     img = Image.open(io.BytesIO(image_bytes))
                     img.thumbnail((1024, 1024))
                     prompt_parts.append(img)
                     image_count += 1
-                except Exception as e:
-                    skipped_images += 1
-                    print(f"ADVERTENCIA: Se omitió una imagen no soportada en '{nombre_archivo}'. Error: {e}")
+                except Exception:
+                    pass # Omitir imágenes no soportadas
         
-        print(f"Análisis CORE: Se procesaron {image_count} imágenes y se omitieron {skipped_images} en '{nombre_archivo}'.")
+        if not texto_completo and image_count == 0: return ""
 
-        if not texto_completo and image_count == 0:
-            return ""
-
-        # --- ¡CAMBIO CLAVE! AÑADIMOS LA CONFIGURACIÓN DE SEGURIDAD ---
-        # Esto le dice a la API que no bloquee contenido en ninguna de las categorías de seguridad.
-        safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE",
-            },
-        ]
-        # --- FIN DEL CAMBIO ---
-
+        safety_settings = [{"category": c, "threshold": "BLOCK_NONE"} for c in ["HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_HATE_SPEECH", "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]]
+        
         model = st.session_state.gemini_model
-        # Pasamos la configuración de seguridad en la llamada a la API
         response = model.generate_content(prompt_parts, safety_settings=safety_settings)
 
         if not response.candidates:
-            block_reason = "No especificado"
-            if hasattr(response, 'prompt_feedback') and hasattr(response.prompt_feedback, 'block_reason'):
-                block_reason = response.prompt_feedback.block_reason.name
-            
-            # Este error ahora solo debería aparecer por razones que no sean los filtros de contenido estándar.
-            return f"Error: La API bloqueó la respuesta por una razón fundamental. Razón: {block_reason}"
+            reason = response.prompt_feedback.block_reason.name if hasattr(response, 'prompt_feedback') else "No especificado"
+            return f"Error: La API bloqueó la respuesta. Razón: {reason}"
 
         return f"--- ANÁLISIS MULTIMODAL DE '{nombre_archivo}' ---\n{response.text}"
 
     except Exception as e:
-        print(f"ERROR en el análisis CORE para '{nombre_archivo}': {e}")
         return f"Error al procesar el archivo DOCX: {str(e)}"
 
 @st.cache_data(show_spinner=False)
 def get_cached_multimodal_analysis(_file_content_bytes, nombre_archivo):
-    """
-    (FUNCIÓN CACHEABLE)
-    Esta función envuelve la lógica de análisis principal. Streamlit almacenará en caché
-    el resultado. Si se llama de nuevo con los mismos bytes de archivo, devolverá
-    el resultado guardado instantáneamente sin volver a ejecutar el análisis.
-    El guion bajo en '_file_content_bytes' es una convención para indicar que es el
-    argumento principal para el hashing de la caché.
-    """
+    """(FUNCIÓN CACHEABLE) Envuelve la lógica de análisis principal."""
     print(f"CACHE MISS: Ejecutando análisis por primera vez para '{nombre_archivo}'.")
-    file_bytes_io = io.BytesIO(_file_content_bytes)
-    return _analizar_docx_core(file_bytes_io, nombre_archivo)
-
+    return _analizar_docx_core(io.BytesIO(_file_content_bytes), nombre_archivo)
 
 def analizar_docx_multimodal_con_gemini(file_bytes_io, nombre_archivo):
-    """
-    (FUNCIÓN PRINCIPAL - CON UI)
-    Esta es la función que llamarás desde tu aplicación. Se encarga de mostrar
-    mensajes al usuario y de llamar a la función cacheable para obtener el análisis.
-    """
+    """(FUNCIÓN PRINCIPAL) Llama a la función cacheable para obtener el análisis."""
     with st.spinner(f"Analizando '{nombre_archivo}' (texto e imágenes)..."):
-        st.write(f"Procesando archivo: {nombre_archivo}")
-        
-        # Pasamos los bytes crudos a la función cacheada
-        file_content_bytes = file_bytes_io.getvalue()
-        analysis_result = get_cached_multimodal_analysis(file_content_bytes, nombre_archivo)
-        
+        analysis_result = get_cached_multimodal_analysis(file_bytes_io.getvalue(), nombre_archivo)
         if "Error" in analysis_result:
             st.error(f"No se pudo analizar '{nombre_archivo}'.")
             return None
-        
-        st.success(f"Análisis de '{nombre_archivo}' obtenido (de caché o nuevo).")
+        st.success(f"Análisis de '{nombre_archivo}' completado.")
         return analysis_result
