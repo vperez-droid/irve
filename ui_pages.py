@@ -542,6 +542,11 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 # =============================================================================
 
 def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active_lot_folder_id, titulo, indicaciones_completas, contexto_adicional_lotes="", project_language='Español'):
+    """
+    (VERSIÓN MEJORADA)
+    Genera el guion para un subapartado. Ahora analiza correctamente los archivos .docx
+    de contexto antes de enviarlos a la IA, evitando el error de MIME type.
+    """
     from googleapiclient.discovery import build
     service = build('drive', 'v3', credentials=credentials)
 
@@ -553,8 +558,7 @@ def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active
         subapartado_guion_folder_id = find_or_create_folder(service, nombre_limpio, parent_id=guiones_folder_id)
         pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
         
-        # En la vida real, el contexto del lote se pasaría de forma más robusta
-        contexto_lote_actual = "" # Simplificado para la función de hilo
+        contexto_lote_actual = get_lot_context()
         prompt = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=project_language, contexto_lote=contexto_lote_actual)
         
         contenido_ia = [prompt, "--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False)]
@@ -562,29 +566,51 @@ def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active
         if contexto_adicional_lotes:
             contenido_ia.append(contexto_adicional_lotes)
 
+        # --- Procesamiento de Pliegos con lógica multimodal ---
         pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
         for file_info in pliegos_en_drive:
             file_bytes_io = download_file_from_drive_uncached(service, file_info['id'])
-            if file_info['name'].lower().endswith('.xlsx'):
-                contenido_ia.append(convertir_excel_a_texto_csv(file_bytes_io, file_info['name']))
+            if 'wordprocessingml' in file_info['mimeType']:
+                analisis_multimodal = analizar_docx_multimodal_con_gemini(file_bytes_io, file_info['name'])
+                if analisis_multimodal and "Error" not in analisis_multimodal:
+                    contenido_ia.append(analisis_multimodal)
+            elif file_info['name'].lower().endswith('.xlsx'):
+                texto_csv = convertir_excel_a_texto_csv(file_bytes_io, file_info['name'])
+                if texto_csv: contenido_ia.append(texto_csv)
             else:
                 contenido_ia.append({"mime_type": file_info['mimeType'], "data": file_bytes_io.getvalue()})
 
+        # --- Procesamiento de Documentos de Apoyo con lógica multimodal (¡LA CORRECCIÓN CLAVE!) ---
         docs_de_apoyo = get_files_in_project(service, subapartado_guion_folder_id)
         docs_de_apoyo_filtrados = [f for f in docs_de_apoyo if not f['name'] == nombre_archivo]
         if docs_de_apoyo_filtrados:
-            contenido_ia.append("--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
+            contenido_ia.append("\n--- DOCUMENTACIÓN DE APOYO ADICIONAL ---\n")
             for uploaded_file_info in docs_de_apoyo_filtrados:
                 file_bytes_io_apoyo = download_file_from_drive_uncached(service, uploaded_file_info['id'])
-                if uploaded_file_info['name'].lower().endswith('.xlsx'):
-                    contenido_ia.append(convertir_excel_a_texto_csv(file_bytes_io_apoyo, uploaded_file_info['name']))
+                
+                if 'wordprocessingml' in uploaded_file_info['mimeType']:
+                    # ¡AQUÍ ESTÁ LA MEJORA! Si es un .docx, lo analizamos primero.
+                    analisis_multimodal = analizar_docx_multimodal_con_gemini(file_bytes_io_apoyo, uploaded_file_info['name'])
+                    if analisis_multimodal and "Error" not in analisis_multimodal:
+                        contenido_ia.append(analisis_multimodal)
+                
+                elif uploaded_file_info['name'].lower().endswith('.xlsx'):
+                    texto_csv = convertir_excel_a_texto_csv(file_bytes_io_apoyo, uploaded_file_info['name'])
+                    if texto_csv: contenido_ia.append(texto_csv)
+                
                 else:
+                    # Para otros tipos de archivo soportados (como PDF), los enviamos directamente.
                     contenido_ia.append({"mime_type": uploaded_file_info['mimeType'], "data": file_bytes_io_apoyo.getvalue()})
         
+        # El resto de la función sigue igual
         chat = model.start_chat()
         response = enviar_mensaje_con_reintentos(chat, contenido_ia)
         if not response or not response.candidates:
-            print(f"ERROR: No se obtuvo respuesta válida de la API para '{titulo}'.")
+            # Imprime el feedback de la API si la respuesta fue bloqueada
+            if response and hasattr(response, 'prompt_feedback'):
+                st.error(f"La generación para '{titulo}' fue bloqueada. Razón: {response.prompt_feedback}")
+            else:
+                 st.error(f"No se obtuvo respuesta válida de la API para '{titulo}'.")
             return False
         
         documento = docx.Document()
@@ -601,7 +627,14 @@ def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active
         
         upload_file_to_drive(service, word_file_obj, subapartado_guion_folder_id)
         return True
+
     except Exception as e:
+        # Captura y muestra errores específicos de la API de Gemini si están disponibles
+        if isinstance(e, genai.types.StopCandidateException):
+            st.error(f"Error en la generación para '{titulo}': La respuesta fue detenida prematuramente. Esto puede deberse a los filtros de seguridad. {e}")
+        else:
+            st.error(f"Error inesperado en el hilo de generación para '{titulo}': {e}")
+        # Imprime en la consola del servidor para depuración
         print(f"ERROR en el hilo de generación para '{titulo}': {e}")
         return False
 
