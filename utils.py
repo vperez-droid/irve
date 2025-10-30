@@ -160,39 +160,59 @@ def natural_sort_key(s):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
 def agregar_markdown_a_word(documento, texto_markdown):
-    """Convierte una cadena de Markdown a un documento de Word."""
+    """
+    Convierte una cadena de Markdown a un documento de Word, manejando
+    encabezados, listas anidadas (con indentación) y negritas.
+    """
     patron_encabezado = re.compile(r'^(#+)\s+(.*)')
-    patron_lista_numerada = re.compile(r'^\s*\d+\.\s+')
-    patron_lista_viñeta = re.compile(r'^\s*[\*\-]\s+')
-    
+
     def procesar_linea_con_negritas(parrafo, texto):
+        # Divide el texto por el marcador de negrita, manteniendo los marcadores
         partes = re.split(r'(\*\*.*?\*\*)', texto)
         for parte in partes:
             if parte.startswith('**') and parte.endswith('**'):
+                # Si es negrita, quita los asteriscos y añade el texto en negrita
                 parrafo.add_run(parte[2:-2]).bold = True
             elif parte:
+                # Si no, añade el texto normal
                 parrafo.add_run(parte)
 
     for linea in texto_markdown.split('\n'):
-        linea_limpia = linea.strip()
-        if not linea_limpia: continue
-        
-        match_encabezado = patron_encabezado.match(linea_limpia)
+        linea_limpia = linea.rstrip()
+        if not linea_limpia.strip(): continue # Ignorar líneas vacías
+
+        match_encabezado = patron_encabezado.match(linea_limpia.strip())
         if match_encabezado:
             nivel = min(len(match_encabezado.group(1)), 4)
             documento.add_heading(match_encabezado.group(2).strip(), level=nivel)
             continue
 
-        if patron_lista_numerada.match(linea_limpia):
-            p = documento.add_paragraph(style='List Number')
-            procesar_linea_con_negritas(p, patron_lista_numerada.sub('', linea_limpia))
-        elif patron_lista_viñeta.match(linea_limpia):
-            p = documento.add_paragraph(style='List Bullet')
-            procesar_linea_con_negritas(p, patron_lista_viñeta.sub('', linea_limpia))
-        else:
-            p = documento.add_paragraph()
-            procesar_linea_con_negritas(p, linea_limpia)
+        # Detecta el nivel de indentación contando los espacios iniciales
+        indentacion = len(linea_limpia) - len(linea_limpia.lstrip(' '))
+        nivel_lista = (indentacion // 2) # Asumimos 2 espacios por nivel, puedes ajustarlo a 4
 
+        # Busca patrones de lista (viñeta o numerada)
+        match_viñeta = re.match(r'^\s*[\*\-]\s+', linea_limpia)
+        match_numerada = re.match(r'^\s*\d+\.\s+', linea_limpia)
+
+        if match_viñeta or match_numerada:
+            # Selecciona el estilo de Word basado en el nivel de anidación
+            if nivel_lista == 0:
+                style = 'List Bullet' if match_viñeta else 'List Number'
+            elif nivel_lista == 1:
+                style = 'List Bullet 2' if match_viñeta else 'List Number 2'
+            else: # Nivel 2 y superiores
+                style = 'List Bullet 3' if match_viñeta else 'List Number 3'
+
+            p = documento.add_paragraph(style=style)
+            # Limpia el marcador de lista del texto antes de añadirlo
+            texto_del_item = re.sub(r'^\s*([\*\-]\s+|\d+\.\s+)', '', linea_limpia)
+            procesar_linea_con_negritas(p, texto_del_item)
+        else:
+            # Si no es una lista, es un párrafo normal
+            p = documento.add_paragraph()
+            procesar_linea_con_negritas(p, linea_limpia.strip())
+            
 def generar_indice_word(documento, estructura_memoria):
     """Añade un índice al principio de un documento de Word."""
     documento.add_heading("Índice", level=1)
