@@ -20,7 +20,7 @@ from prompts import PROMPT_PLIEGOS
 
 from utils import (
     limpiar_respuesta_json, 
-    convertir_excel_a_texto_csv, 
+    convertir_excel_a_texto_csv, apply_safety_margin_to_plan, 
     analizar_docx_multimodal_con_gemini, # <-- ¡IMPORTACIÓN CLAVE AÑADIDA!
     get_lot_context, 
     OPCION_ANALISIS_GENERAL
@@ -84,6 +84,9 @@ def handle_full_regeneration(model):
     """
     Función que genera un índice desde cero analizando los archivos de 'Pliegos',
     ahora con capacidad para procesar .docx con texto e imágenes.
+    
+    VERSIÓN MODIFICADA: Aplica un margen de seguridad al plan de extensión
+    para evitar exceder el límite de páginas en la redacción final.
     """
     if not st.session_state.get('drive_service') or not st.session_state.get('selected_project'):
         st.error("Error de sesión. No se puede iniciar la regeneración."); return False
@@ -106,7 +109,7 @@ def handle_full_regeneration(model):
             
             contenido_ia = [prompt_con_idioma]
 
-            # --- INICIO DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
+            # --- Lógica de análisis de archivos (sin cambios) ---
             for file in document_files:
                 file_content_bytes = download_file_from_drive_cached(service, file['id'])
                 nombre_archivo = file['name']
@@ -118,18 +121,14 @@ def handle_full_regeneration(model):
                         contenido_ia.append(texto_csv)
 
                 elif 'wordprocessingml' in mime_type:
-                    # Si es un .docx, usamos la nueva función multimodal
                     with st.spinner(f"Analizando '{nombre_archivo}' (texto e imágenes)..."):
                         analisis_multimodal = analizar_docx_multimodal_con_gemini(file_content_bytes, nombre_archivo)
                         if analisis_multimodal and "Error" not in analisis_multimodal:
                             contenido_ia.append(analisis_multimodal)
                 else:
-                    # Para otros tipos (PDF, etc.), los enviamos directamente.
-                    # Gemini 2.5 Flash los maneja de forma nativa.
                     contenido_ia.append({"mime_type": mime_type, "data": file_content_bytes.getvalue()})
-            # --- FIN DE LA LÓGICA DE ANÁLISIS CORREGIDA ---
+            # --- Fin de la lógica de análisis ---
 
-            # La llamada a la API sigue siendo el paso que consume más tiempo
             response = model.generate_content(contenido_ia, generation_config={"response_mime_type": "application/json"})
             
             if not response or not response.candidates:
@@ -139,10 +138,26 @@ def handle_full_regeneration(model):
                 return False
 
             json_limpio_str = limpiar_respuesta_json(response.text)
+            
+            # -----------------------------------------------------------------
+            #                  INICIO DE LA MODIFICACIÓN CLAVE
+            # -----------------------------------------------------------------
             if json_limpio_str:
-                st.session_state.generated_structure = json.loads(json_limpio_str)
+                # 1. Cargamos el JSON original que nos dio la IA.
+                original_structure = json.loads(json_limpio_str)
+
+                # 2. Aplicamos el margen de seguridad del 15% (apuntamos al 85% del límite).
+                #    Nuestra nueva función en utils.py se encarga de recalcular todo.
+                adjusted_structure = apply_safety_margin_to_plan(original_structure, safety_margin_factor=0.85)
+
+                # 3. Guardamos en el estado de la sesión la versión YA AJUSTADA.
+                st.session_state.generated_structure = adjusted_structure
+                
+                # El resto del proceso sigue igual...
                 st.session_state.uploaded_pliegos = document_files
-                st.toast("✅ ¡Índice regenerado desde cero con éxito!")
+                
+                # El mensaje de éxito ahora refleja el ajuste
+                st.toast("✅ ¡Índice regenerado y ajustado con margen de seguridad!")
                 return True
             else:
                 st.error("La IA devolvió una respuesta vacía o no válida (después de la limpieza)."); return False
