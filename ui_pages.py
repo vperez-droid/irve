@@ -25,7 +25,7 @@ from drive_utils import (
 )
 from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
-    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, analizar_docx_multimodal_con_gemini,
+    wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, analizar_docx_multimodal_con_gemini, apply_safety_margin_to_plan,
     corregir_numeracion_markdown, enviar_mensaje_con_reintentos, get_lot_index_info, generar_indice_word, generar_fragmento_individual,
     get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, 
     convertir_excel_a_texto_csv
@@ -445,7 +445,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
     
     st.button("← Volver a la gestión de archivos (Fase 2)", on_click=go_to_phase2)
 
-    # --- Lógica interna para la regeneración con feedback (MODIFICADA) ---
+    # --- Lógica interna para la regeneración con feedback (CORREGIDA) ---
     def handle_regeneration_with_feedback():
         feedback_text = st.session_state.get("feedback_area", "")
         if not feedback_text.strip():
@@ -466,19 +466,14 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 
                 if st.session_state.get('uploaded_pliegos'):
                     st.write("Analizando documentos de referencia para la regeneración...")
-                    
                     for file_info in st.session_state.uploaded_pliegos:
                         file_content_bytes = download_file_from_drive_cached(service, file_info['id'])
                         nombre_archivo = file_info['name']
-                        
                         if nombre_archivo.lower().endswith('.xlsx'):
                             texto_csv = convertir_excel_a_texto_csv(file_content_bytes, nombre_archivo)
                             if texto_csv: contenido_ia_regeneracion.append(texto_csv)
                         else:
-                            contenido_ia_regeneracion.append({
-                                "mime_type": file_info['mimeType'], 
-                                "data": file_content_bytes.getvalue()
-                            })
+                            contenido_ia_regeneracion.append({ "mime_type": file_info['mimeType'], "data": file_content_bytes.getvalue() })
 
                 generation_config = genai.GenerationConfig(response_mime_type="application/json")
                 response_regeneracion = model.generate_content(contenido_ia_regeneracion, generation_config=generation_config)
@@ -488,23 +483,32 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                 json_limpio_str_regenerado = limpiar_respuesta_json(response_regeneracion.text)
                 
                 # -----------------------------------------------------------------
-                #                  INICIO DE LA MODIFICACIÓN CLAVE
+                #                  INICIO DE LA CORRECCIÓN CLAVE
                 # -----------------------------------------------------------------
                 if json_limpio_str_regenerado:
-                    # 1. Cargamos el JSON que la IA regeneró con el feedback.
+                    # 1. Cargamos la nueva estructura (potencialmente incompleta) que nos dio la IA.
                     regenerated_structure = json.loads(json_limpio_str_regenerado)
 
-                    # 2. Aplicamos DE NUEVO el margen de seguridad a esta nueva versión.
+                    # 2. Rescatamos la configuración de la versión ANTERIOR, que sabemos que es correcta.
+                    original_config = st.session_state.generated_structure.get('configuracion_licitacion', {})
+
+                    # 3. VERIFICAMOS Y CORREGIMOS: Si la nueva estructura no tiene el bloque de configuración,
+                    #    se lo inyectamos desde la versión original.
+                    if not regenerated_structure.get('configuracion_licitacion') and original_config:
+                        regenerated_structure['configuracion_licitacion'] = original_config
+                        st.toast("💡 Se ha restaurado la configuración de páginas que la IA había omitido.")
+
+                    # 4. Ahora, con la estructura ya completa y corregida, aplicamos el margen de seguridad.
                     adjusted_structure = apply_safety_margin_to_plan(regenerated_structure, safety_margin_factor=0.85)
 
-                    # 3. Guardamos la versión AJUSTADA en el estado de la sesión.
+                    # 5. Guardamos la versión final, corregida y ajustada, en el estado de la sesión.
                     st.session_state.generated_structure = adjusted_structure
                     
                     st.toast("¡Estructura regenerada y ajustada con tu feedback!")
-                    st.session_state.feedback_area = "" # Limpiamos el área de texto
+                    st.session_state.feedback_area = ""
                     st.rerun()
                 # -----------------------------------------------------------------
-                #                   FIN DE LA MODIFICACIÓN CLAVE
+                #                   FIN DE LA CORRECCIÓN CLAVE
                 # -----------------------------------------------------------------
                 else:
                     st.error("La IA no devolvió una estructura JSON válida tras la regeneración.")
@@ -565,7 +569,6 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
         with st.spinner("Guardando análisis final y preparando carpetas..."):
             try:
                 index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
-                # Guardamos la estructura ya ajustada
                 json_bytes = json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False).encode('utf-8')
                 mock_file_obj = io.BytesIO(json_bytes)
                 mock_file_obj.name = index_filename
