@@ -295,9 +295,11 @@ def wrap_html_fragment(html_fragment):
     <body>{html_fragment}</body></html>
     """
 
-def html_a_imagen(html_string, output_filename="temp_image.png"):
+def html_a_imagen(html_string):
     """
-    Convierte una cadena de HTML en una imagen PNG usando wkhtmltoimage.
+    (VERSIÓN CORREGIDA)
+    Convierte una cadena de HTML en bytes de una imagen PNG, operando en memoria.
+    Devuelve los bytes de la imagen si tiene éxito, o None si falla.
     """
     try:
         path_wkhtmltoimage = os.popen('which wkhtmltoimage').read().strip()
@@ -307,9 +309,11 @@ def html_a_imagen(html_string, output_filename="temp_image.png"):
         config = imgkit.config(wkhtmltoimage=path_wkhtmltoimage)
         options = {'format': 'png', 'encoding': "UTF-8", 'width': '800', 'quiet': ''}
         
-        imgkit.from_string(html_string, output_filename, config=config, options=options)
+        # El cambio clave: output_path=False devuelve los bytes directamente
+        image_bytes = imgkit.from_string(html_string, False, config=config, options=options)
         
-        return output_filename if os.path.exists(output_filename) else None
+        return image_bytes
+        
     except Exception as e:
         st.error(f"Error al convertir HTML a imagen: {e}")
         return None
