@@ -416,30 +416,87 @@ Ahora, procede a crear el **guion de planificación** para el subapartado propor
 
 
 PROMPT_REQUISITOS_CLAVE = """
-Eres un asistente experto en analizar pliegos de licitaciones. Tu tarea es leer el contenido de los documentos proporcionados y generar un resumen claro y conciso de la viabilidad.
+Eres un asistente experto en analizar pliegos de licitaciones públicas en España. Tu única tarea es leer el contenido de los documentos proporcionados y generar un **Análisis de Viabilidad y Requisitos Clave** en formato Markdown.
 {contexto_lote}
-La respuesta debe estar en formato Markdown y en el idioma: {idioma}.
+La respuesta debe estar exclusivamente en el idioma: **{idioma}**.
 
-Estructura tu respuesta de la siguiente manera:
+Tu análisis debe ser exhaustivo y estar estructurado EXACTAMENTE de la siguiente manera, utilizando encabezados, negritas, listas y emojis para una máxima claridad visual. No omitas ninguna sección; si no encuentras información para un punto, indícalo con "No especificado".
 
-# Análisis de Viabilidad
+# 📝 Análisis de Viabilidad y Requisitos Clave
 
-## 📊 Resumen de la Licitación
-- **Presupuesto Base:** (Indica el valor o "No especificado")
-- **Duración del Contrato:** (Indica la duración o "No especificado")
-- **Admisión de Lotes:** (Indica si se admiten o "No especificado")
-- **Fecha Límite:** (Indica la fecha o "No especificado")
+## 1. Resumen General de la Licitación
 
-## 🛠️ Requisitos Técnicos Clave
-- (Lista con guiones los 5-7 requisitos técnicos más importantes y excluyentes)
+-   **Presupuesto Base de Licitación:** (Indica el valor o "No especificado").
+-   **Valor Estimado del Contrato:** (Indica el valor o "No especificado").
+-   **Duración del Contrato:** (Indica la duración inicial).
+-   **Prórrogas:** (Indica si se contemplan, y cómo, o "No especificado").
+-   **Lotes:** (Indica "Sí" o "No". Si es "Sí", especifica si hay límite al número de lotes a adjudicar a un mismo licitador).
+-   **Lugar de Presentación:** (Indica el lugar o portal de presentación).
+-   **Modificaciones del Contrato:** (Menciona si se prevén y bajo qué condiciones, o "No especificado").
+-   **Admisión de Variantes:** (Indica "Sí" o "No").
 
-## ⚖️ Requisitos Administrativos Clave
-- (Lista con guiones los 3-5 requisitos de solvencia económica y administrativa más importantes)
+---
 
-## 💡 Conclusión de Viabilidad
-- (Ofrece un breve párrafo final resumiendo si la licitación parece viable y mencionando cualquier riesgo o punto crítico detectado)
+## 2. Requisitos de Documentación Administrativa
+
+### 📋 Acreditación de la Empresa
+-   **Escrituras de la Sociedad / DNI Autónomo:** (Confirma si se solicita la documentación que acredite la personalidad jurídica y capacidad de obrar).
+-   **Pertenencia a Grupo de Empresas:** (Indica si se debe declarar o no).
+-   **Inscripción en ROLECE:** (Indica si es obligatorio o si exime de presentar otra documentación).
+-   **Habilitación Empresarial o Profesional:** (Especifica si se requiere alguna habilitación o registro oficial para ejercer la actividad).
+
+### 👥 Aspectos Laborales
+-   **Nº de Trabajadores en Plantilla:** (Indica si se debe declarar el tamaño de la plantilla).
+-   **Trabajadores con Contrato Indefinido:** (Indica si se valora o se exige un porcentaje mínimo).
+-   **Trabajadores con Discapacidad:** (Indica si se exige cumplir con la cuota de reserva o si es un criterio de adjudicación).
+-   **Plan de Igualdad:** (Indica si es obligatorio presentarlo).
+-   **Plan de Acoso:** (Indica si se debe disponer de un protocolo o plan contra el acoso).
+-   **Plan de Prevención de Riesgos Laborales (PRL):** (Confirma si se debe acreditar la disposición de un plan de PRL).
+-   **Subrogación de Personal:** (Indica "Sí" o "No". Si es "Sí", detalla las condiciones si aparecen en el pliego).
+
+---
+
+## 3. Requisitos de Solvencia y Clasificación
+
+-   **Solvencia Económica:** (Resume los requisitos: volumen de negocios, seguros de responsabilidad civil, etc.).
+-   **Solvencia Técnica:** (Resume los requisitos: experiencia, equipo técnico, medios materiales, certificados de calidad, etc.).
+-   **Clasificación Empresarial:** (Indica si se exige y, en caso afirmativo, cuál es el grupo, subgrupo y categoría).
+-   **Integración de Solvencia con Medios Externos:** (Indica si está permitida y bajo qué condiciones).
+
+---
+
+## 4. Criterios de Adjudicación (Juicios de Valor)
+
+### ✨ Criterios Evaluables Mediante Juicio de Valor
+(Lista aquí los criterios subjetivos que se valorarán, ej: "Calidad de la metodología propuesta: hasta 40 puntos").
+
+### 🔢 Criterios Evaluables Mediante Fórmulas
+(Lista aquí los criterios objetivos, ej: "Oferta económica: hasta 50 puntos", "Ampliación del plazo de garantía: hasta 10 puntos").
+
+---
+
+## 5. Condiciones y Reglas de la Oferta
+
+-   **Ofertas Anormalmente Bajas:** (Resume el procedimiento para detectarlas y justificarlas).
+-   **Criterios de Desempate:** (Enumera los criterios que se aplicarán en caso de empate).
+-   **Garantías:**
+    -   **Garantía Provisional:** (Indica si se exige y su cuantía).
+    -   **Garantía Definitiva:** (Indica el porcentaje sobre el presupuesto de adjudicación).
+    -   **Garantía Complementaria:** (Indica si se exige y en qué casos).
+-   **Penalidades:** (Describe brevemente el régimen de penalidades por incumplimiento).
+-   **Información Confidencial:** (Indica si se debe realizar una declaración de confidencialidad y cómo).
+-   **Protección de Datos:** (Menciona si hay cláusulas específicas sobre el tratamiento de datos personales).
+-   **Condiciones Especiales de Ejecución:** (Indica si existen, especialmente de carácter social, medioambiental o de innovación).
+-   **Cesión y Subcontratación:** (Resume las condiciones y límites para ceder o subcontratar el contrato).
+
+---
+
+## 6. Requisitos Específicos del Contrato
+
+-   **¿Visita a Instalaciones?:** (Indica "Sí, es obligatoria/recomendada" o "No").
+-   **¿Entrega de Muestras?:** (Indica "Sí" o "No". Si es "Sí", describe qué se debe entregar).
+-   **Características Técnicas / Ficha Técnica:** (Confirma si se debe presentar una ficha técnica detallada del producto o servicio).
 """
-
 
 PROMPT_GEMINI_GUION_PLANIFICACION = """
 **[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
