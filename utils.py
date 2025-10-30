@@ -390,3 +390,95 @@ def generar_fragmento_individual(model, prompt_info, reintentos=5, delay_inicial
     
     # Si todos los reintentos fallan
     return {'success': False, 'error': f"Límite de API excedido tras {reintentos} intentos.", 'prompt_id': prompt_id}
+
+def apply_safety_margin_to_plan(generated_structure, safety_margin_factor=0.85):
+    """
+    Aplica un margen de seguridad al plan de extensión de un índice generado.
+    Recalcula las páginas y los caracteres de forma proporcional.
+
+    Args:
+        generated_structure (dict): El objeto JSON completo generado por la IA.
+        safety_margin_factor (float): El factor por el cual reducir el objetivo (ej. 0.85 para un 15% de reducción).
+
+    Returns:
+        dict: El objeto JSON con el plan_extension ajustado.
+    """
+    try:
+        # Extraemos el plan y la configuración originales
+        original_plan = generated_structure.get("plan_extension", [])
+        config = generated_structure.get("configuracion_licitacion", {})
+        
+        # Intentamos obtener el máximo de páginas como un número
+        max_paginas_str = config.get('max_paginas', 'N/D')
+        # Usamos regex para encontrar el número en el string (ej. "20 páginas")
+        match = re.search(r'\d+', str(max_paginas_str))
+        if not match:
+            # Si no hay un número de páginas, no podemos ajustar nada. Devolvemos el original.
+            return generated_structure
+
+        original_total_pages = int(match.group(0))
+        
+        # Si el plan ya es muy corto, no lo reducimos más
+        if original_total_pages <= 3:
+            return generated_structure
+
+        # Calculamos el nuevo objetivo de páginas
+        adjusted_total_pages = original_total_pages * safety_margin_factor
+
+        # Calculamos el total de páginas sugeridas en el plan original de la IA
+        # para mantener la proporcionalidad. A veces la IA no suma exactamente el máximo.
+        current_plan_total_pages = sum(item.get('paginas_sugeridas_apartado', 0) for item in original_plan)
+        if current_plan_total_pages == 0:
+            return generated_structure # Evitar división por cero
+
+        # Creamos el nuevo plan que reemplazará al original
+        new_plan = []
+        
+        # Recorremos cada APARTADO del plan
+        for apartado_item in original_plan:
+            original_apartado_pages = apartado_item.get('paginas_sugeridas_apartado', 0)
+            
+            # Calculamos las nuevas páginas para este apartado de forma proporcional
+            scaling_factor = original_apartado_pages / current_plan_total_pages
+            adjusted_apartado_pages = adjusted_total_pages * scaling_factor
+            
+            new_apartado_item = apartado_item.copy()
+            new_apartado_item['paginas_sugeridas_apartado'] = round(adjusted_apartado_pages, 2)
+            
+            new_subapartado_desglose = []
+            original_subapartado_total_pages = sum(sub.get('paginas_sugeridas', 0) for sub in apartado_item.get('desglose_subapartados', []))
+            if original_subapartado_total_pages == 0:
+                continue
+
+            # Recorremos cada SUBAPARTADO dentro del apartado
+            for subapartado_item in apartado_item.get('desglose_subapartados', []):
+                original_sub_pages = subapartado_item.get('paginas_sugeridas', 0)
+                
+                # Calculamos las nuevas páginas para este subapartado proporcionalmente
+                sub_scaling_factor = original_sub_pages / original_subapartado_total_pages
+                adjusted_sub_pages = adjusted_apartado_pages * sub_scaling_factor
+                
+                new_sub_item = subapartado_item.copy()
+                new_sub_item['paginas_sugeridas'] = round(adjusted_sub_pages, 2)
+                
+                # ¡Recalculamos los caracteres con los valores de tu propio código!
+                new_sub_item['min_caracteres_sugeridos'] = int(adjusted_sub_pages * CARACTERES_POR_PAGINA_MIN)
+                new_sub_item['max_caracteres_sugeridos'] = int(adjusted_sub_pages * CARACTERES_POR_PAGINA_MAX)
+                
+                new_subapartado_desglose.append(new_sub_item)
+            
+            new_apartado_item['desglose_subapartados'] = new_subapartado_desglose
+            new_plan.append(new_apartado_item)
+
+        # Reemplazamos el plan antiguo por el nuevo en la estructura final
+        generated_structure["plan_extension"] = new_plan
+        st.toast(f"✅ Margen de seguridad aplicado. Objetivo ajustado de {original_total_pages} a ~{int(adjusted_total_pages)} páginas.")
+        
+        return generated_structure
+
+    except Exception as e:
+        st.warning(f"No se pudo aplicar el margen de seguridad: {e}")
+        # Si algo falla, devolvemos la estructura original para no romper la app
+        return generated_structure
+
+# --- FIN DE LA NUEVA FUNCIÓN ---
