@@ -24,7 +24,7 @@ from drive_utils import (
     get_or_create_lot_folder_id, clean_folder_name, get_context_from_lots
 )
 from utils import (
-    mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word,
+    mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word, desensamblar_docx, reensamblar_docx_con_imagenes, 
     wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, analizar_docx_multimodal_con_gemini, apply_safety_margin_to_plan,
     corregir_numeracion_markdown, enviar_mensaje_con_reintentos, get_lot_index_info, generar_indice_word, generar_fragmento_individual,
     get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, 
