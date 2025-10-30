@@ -329,25 +329,29 @@ Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato rel
 
 **Ejemplo de inicio:** "El presente proyecto aborda la necesidad de [problema principal del cliente] a través de una solución integral que combina [pilar 1 de la solución] con [pilar 2 de la solución], garantizando [resultado clave para el cliente]."
 """
-
 PROMPT_COHESION_FINAL =  """
-Actúas como un Editor Técnico experto. Tu única misión es mejorar la cohesión y el flujo de un borrador de memoria técnica. NO debes reescribir apartados enteros ni eliminar contenido. Tu trabajo es puramente de conexión y pulido.
+Actúas como un Editor Técnico experto y meticuloso. Tu misión es mejorar la cohesión, la fluidez y la coherencia lógica de un borrador de memoria técnica. NO debes reescribir apartados enteros ni eliminar contenido. Tu trabajo es de conexión, pulido y verificación.
 Escribe el contenido solicitado en **idioma: {idioma}**.
-**ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
-Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato relacionado con criterios económicos o evaluables por fórmula (precio, ofertas económicas, descuentos, reducción de plazos de entrega, ampliación de plazos de garantía, etc.). La memoria técnica solo debe contener información sobre juicios de valor. Cualquier mención a los criterios de fórmula es motivo de exclusión directa de la licitación. Céntrate únicamente en desarrollar los aspectos técnicos y de calidad solicitados.
+
 Te proporcionaré el texto completo del borrador. Debes devolver una versión mejorada aplicando ÚNICAMENTE las siguientes reglas:
 
-1.  **AÑADIR REFERENCIAS CRUZADAS (TAREA PRINCIPAL):** Cuando un apartado mencione un concepto ya introducido, AÑADE una referencia explícita. Ejemplos: "...se utilizará la metodología Agile-Scrum **descrita en el apartado 1.1**.", "...a través de Jira, **la herramienta seleccionada para la gestión (ver sección 1.5)**."
+1.  **VERIFICAR COHERENCIA LÓGICA (TAREA CRÍTICA):** Tu principal prioridad es detectar y corregir suavemente cualquier contradicción o inconsistencia en el documento. Asegúrate de que los datos, nombres de tecnologías o metodologías sean consistentes a lo largo de todo el texto.
+    - **Ejemplo de corrección:** Si en el apartado 2.2 se menciona que el agente extintor es "espuma F-500" y en el 4.1 se habla de "polvo polivalente ABC" para el mismo fin, debes unificarlo al término correcto según el contexto principal (probablemente F-500) para eliminar la contradicción.
 
-2.  **MEJORAR TRANSICIONES:** Añade frases cortas al inicio de los apartados para crear un puente lógico con el anterior. Ejemplo: "**Una vez definida la metodología, el siguiente paso es detallar el plan de trabajo...**"
+2.  **AÑADIR REFERENCIAS CRUZADAS:** Cuando un apartado mencione un concepto ya introducido, AÑADE una referencia explícita para crear un hilo conductor. (Ej: "...se utilizará la metodología Agile-Scrum **(descrita en el apartado 1.1)**.").
 
-3.  **UNIFICAR TERMINOLOGÍA:** Detecta inconsistencias (ej: "stakeholders" y "partes interesadas") y unifica al término más apropiado.
+3.  **MEJORAR TRANSICIONES:** Añade frases cortas al inicio de los apartados para crear un puente lógico con el anterior. (Ej: "**Una vez definida la metodología, el siguiente paso es detallar el plan de trabajo...**").
 
-4.  **REGLA DE ORO: NO ELIMINAR CONTENIDO.** Está **ESTRICTAMENTE PROHIBIDO** eliminar párrafos o datos del original. Tu trabajo es **AÑADIR** cohesión. La versión final debe ser LIGERAMENTE MÁS LARGA que la original.
+4.  **UNIFICAR TERMINOLOGÍA:** Detecta inconsistencias (ej: "stakeholders" y "partes interesadas") y unifica al término más apropiado y profesional para el contexto.
 
-5. ** IMPORTANTE: PALABRAS REPETIDAS **. Trata de evitar la repetición de palabras de forma repetida ya que esto dificulta la lectura del texto, ahí sí que puedes reestructurar y cambiar esa palabra por un sinónimo o formular la frase de otra maner, pero que refleje el mismo contenido.
+5.  **REDUCIR REPETICIÓN:** Evita el uso excesivo de la misma palabra o nombre (como el nombre de la empresa proponente) en párrafos consecutivos. Reestructura las frases o usa sinónimos cuando sea apropiado, sin cambiar el significado.
+
+6.  **NO ELIMINAR CONTENIDO NI MARCADORES:** Está **ESTRICTAMENTE PROHIBIDO** eliminar párrafos, datos o los marcadores de imagen con el formato `[--IMAGEN_ID_XXX--]`. Tu trabajo es **AÑADIR** cohesión y **CORREGIR** inconsistencias.
+
 Genera únicamente el texto completo y mejorado en formato Markdown.
 """
+
+Con esta Fase 6 mejorada y el nuevo prompt, no solo preservarás la integridad visual de tus documentos, sino que también elevarás su calidad profesional al garantizar que sean lógicamente coherentes y estén libres de contradicciones.
 
 PROMPT_GPT_TABLA_PLANIFICACION = """
 **[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
