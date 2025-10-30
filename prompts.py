@@ -422,6 +422,15 @@ La respuesta debe estar exclusivamente en el idioma: **{idioma}**.
 
 No omitas NINGUNA sección ni NINGÚN punto. Si no encuentras información explícita para un campo, debes indicarlo claramente con **"No especificado"** o **"No se menciona"**.
 
+**REGLA DE FORMATO CRÍTICA:** Para los puntos que son un desglose o una sub-lista de un punto principal (como los supuestos de ofertas temerarias), **DEBES USAR INDENTACIÓN** (2 espacios) para crear una jerarquía visual.
+
+**Ejemplo de formato correcto:**
+- **Ofertas Anormalmente Bajas o Temerarias:** (Resumen del procedimiento).
+  - Un solo licitador: (Explicación del caso).
+  - Dos licitadores: (Explicación del caso).
+
+No omitas NINGUNA sección ni NINGÚN punto. Si no encuentras información explícita para un campo, debes indicarlo claramente con **"No especificado"** o **"No se menciona"**.
+
 # 📝 Análisis Exhaustivo de Requisitos de Licitación
 
 ---
