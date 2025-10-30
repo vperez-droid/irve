@@ -314,6 +314,9 @@ Your response must be a single, valid JSON object containing a list of prompts.
 
 PROMPT_GENERAR_INTRODUCCION = """
 Tu tarea es escribir un apartado de **Introducción** conciso y persuasivo, basándote en el contenido completo de la memoria técnica que te proporcionaré.
+### INSTRUCCIÓN CLAVE: CONTEXTO DE LA EMPRESA ###
+La memoria técnica que estás resumiendo ha sido preparada por **{nombre_empresa}**.
+Refleja este hecho en la introducción de forma profesional (ej: "La solución propuesta por {nombre_empresa} aborda...").
 Escribe el contenido solicitado en **idioma: {idioma}**.
 **ADVERTENCIA DE EXCLUSIÓN CRÍTICA:**
 Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato relacionado con criterios económicos o evaluables por fórmula (precio, ofertas económicas, descuentos, reducción de plazos de entrega, ampliación de plazos de garantía, etc.). La memoria técnica solo debe contener información sobre juicios de valor. Cualquier mención a los criterios de fórmula es motivo de exclusión directa de la licitación. Céntrate únicamente en desarrollar los aspectos técnicos y de calidad solicitados.
@@ -474,7 +477,9 @@ Ahora, analiza los documentos y genera el borrador del guion estratégico.
 
 PROMPT_GEMINI_PROPUESTA_ESTRATEGICA = """
 **[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
-Actúa como un Director de Licitaciones y estratega de propuestas senior. Tu objetivo es leer los Criterios de Valoración de una licitación y generar un borrador inicial o guion estratégico que explique CÓMO nuestra empresa (la UTE) va a responder a cada punto para obtener la máxima puntuación. Debes escribir en un tono proactivo y de solución, como si estuvieras redactando la propuesta para ganar.
+u objetivo es leer los Criterios de Valoración de una licitación y generar un borrador inicial o guion estratégico que explique CÓMO nuestra empresa va a responder a cada punto para obtener la máxima puntuación. Debes escribir en un tono proactivo y de solución, como si estuvieras redactando la propuesta para ganar.
+stás redactando esta propuesta en nombre de: **{nombre_empresa}**.
+Cuando te refieras a la entidad que presenta la oferta, utiliza este nombre (por ejemplo, "la propuesta de {nombre_empresa}", "{nombre_empresa} implementará..."). Evita usar "La UTE" a menos que ese sea el nombre exacto que se te ha proporcionado.
 {contexto_lote}
 Escribe el contenido solicitado en **idioma: {idioma}**.
 
@@ -604,6 +609,12 @@ Ejemplo de respuesta si encuentras lotes (usando la palabra "Lote"):
 PROMPT_CLASIFICAR_DOCUMENTO = """
 # ROL Y CONTEXTO
 Eres un consultor experto ayudando a preparar una propuesta técnica para una licitación pública. Tu cliente te ha proporcionado varios documentos de apoyo.
+
+### INSTRUCCIÓN CLAVE: CONTEXTO DE LA EMPRESA ###
+Estás revisando este documento en nombre de: **{nombre_empresa}**.
+Asegúrate de que todas las referencias a la empresa proponente sean coherentes con este nombre.
+{contexto_lote}
+Escribe el contenido solicitado en **idioma: {idioma}**.
 
 # TAREA
 Tu tarea es analizar el contenido de un documento y decidir en cuál de los subapartados de la memoria técnica sería MÁS ÚTIL como fuente de inspiración, ejemplos, datos o material de apoyo para la persona que tiene que redactar esa sección.
