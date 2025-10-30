@@ -577,3 +577,45 @@ def reensamblar_docx_con_imagenes(texto_cohesionado, mapa_de_imagenes):
             agregar_markdown_a_word(doc_final, fragmento)
             
     return doc_final
+
+
+
+def ejecutar_pase_cohesion_fragmento(model, prompt_template, idioma, datos_maestros, contexto_previo, texto_del_fragmento, fragmento_id):
+    """
+    Ejecuta un pase de cohesión para un único fragmento de texto.
+    Devuelve el texto corregido y el resumen para el siguiente fragmento.
+    """
+    try:
+        prompt_completo = prompt_template.format(
+            idioma=idioma,
+            datos_maestros=datos_maestros,
+            contexto_previo=contexto_previo,
+            texto_actual=texto_del_fragmento
+        )
+
+        response = model.generate_content(
+            prompt_completo,
+            generation_config={"response_mime_type": "application/json"}
+        )
+
+        if not response.candidates:
+            razon = "Bloqueado por seguridad"
+            if hasattr(response, 'prompt_feedback'):
+                razon = response.prompt_feedback.block_reason.name
+            return {'success': False, 'error': f"Respuesta bloqueada para '{fragmento_id}': {razon}"}
+
+        json_limpio = limpiar_respuesta_json(response.text)
+        resultado_json = json.loads(json_limpio)
+
+        texto_corregido = resultado_json.get("texto_corregido", texto_del_fragmento)
+        resumen_nuevo = resultado_json.get("resumen_para_siguiente_fragmento", "")
+
+        return {
+            'success': True,
+            'texto': texto_corregido,
+            'resumen': resumen_nuevo
+        }
+    except json.JSONDecodeError as e:
+        return {'success': False, 'error': f"Error de formato JSON en '{fragmento_id}': La IA no devolvió un JSON válido. {e}"}
+    except Exception as e:
+        return {'success': False, 'error': f"Error inesperado procesando '{fragmento_id}': {e}"}
