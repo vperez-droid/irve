@@ -27,7 +27,7 @@ from utils import (
     mostrar_indice_desplegable, limpiar_respuesta_json, agregar_markdown_a_word, desensamblar_docx, reensamblar_docx_con_imagenes, 
     wrap_html_fragment, html_a_imagen, limpiar_respuesta_final, analizar_docx_multimodal_con_gemini, apply_safety_margin_to_plan,
     corregir_numeracion_markdown, enviar_mensaje_con_reintentos, get_lot_index_info, generar_indice_word, generar_fragmento_individual,
-    get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, 
+    get_lot_context, OPCION_ANALISIS_GENERAL, natural_sort_key, ejecutar_pase_cohesion_fragmento, 
     convertir_excel_a_texto_csv
 )
 
@@ -1622,84 +1622,132 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
 #           PÁGINA FASE 6: ENSAMBLAJE FINAL
 # =============================================================================
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
-    st.markdown("<h3>FASE 6: Ensamblaje y Pulido Final</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>FASE 6: Ensamblaje y Pulido Final (Modo Avanzado)</h3>", unsafe_allow_html=True)
     
     selected_lot_text = "Análisis General"
     if st.session_state.get('selected_lot') and st.session_state.selected_lot != OPCION_ANALISIS_GENERAL:
         selected_lot_text = st.session_state.selected_lot
     
     st.info(f"Se generará la versión final para: **{selected_lot_text}**")
-    st.markdown("Este paso final unifica el documento, pule el texto para asegurar su coherencia y preserva todas las imágenes.")
+    st.markdown("Este paso final unifica el documento, pule el texto fragmento a fragmento para asegurar una coherencia total y preserva todas las imágenes.")
     st.markdown("---")
 
     if not st.session_state.get("generated_doc_buffer"):
         st.warning("No se ha encontrado un documento de la Fase 5. Por favor, completa la fase anterior.")
         if st.button("← Ir a Fase 5"): 
-            go_to_phase5()
-            st.rerun()
+            go_to_phase5(); st.rerun()
         return
 
     if st.button("🚀 Ensamblar y Pulir Documento Final", type="primary", use_container_width=True):
         try:
-            # --- INICIO DE LA NUEVA LÓGICA ---
-            
-            # PASO 6.1 y 6.2: Cargar y Desensamblar el borrador de la Fase 5
-            st.toast("Paso 1/5: Desensamblando documento y mapeando imágenes...")
-            with st.spinner("Analizando borrador inicial..."):
+            # --- PASO 1: DESENSAMBLAR Y PREPARAR FRAGMENTOS ---
+            st.toast("Paso 1/5: Desensamblando documento y preparando fragmentos...")
+            with st.spinner("Analizando borrador y dividiéndolo por subapartados..."):
                 buffer_fase5 = st.session_state.generated_doc_buffer
                 texto_original_con_placeholders, mapa_de_imagenes = desensamblar_docx(buffer_fase5)
+                
+                estructura = st.session_state.generated_structure.get('estructura_memoria', [])
+                
+                # Crear una lista ordenada de todos los títulos de subapartados
+                titulos_subapartados = []
+                if any(sec.get('subapartados') for sec in estructura):
+                    for seccion in estructura:
+                        for sub in seccion.get('subapartados', []):
+                            titulos_subapartados.append(sub)
+                else: # Si no hay subapartados, usamos los apartados principales
+                     for seccion in estructura:
+                        titulos_subapartados.append(seccion.get('apartado'))
+
+
+                # Dividir el texto completo en un diccionario de {titulo: texto}
+                fragmentos_de_texto = {}
+                texto_restante = texto_original_con_placeholders
+                
+                for i, titulo in enumerate(titulos_subapartados):
+                    if i + 1 < len(titulos_subapartados):
+                        siguiente_titulo = titulos_subapartados[i+1]
+                        # Escapar caracteres especiales de regex en los títulos
+                        patron_division = re.escape(siguiente_titulo)
+                        partes = re.split(f'(?={patron_division})', texto_restante, 1)
+                        fragmentos_de_texto[titulo] = partes[0]
+                        texto_restante = partes[1] if len(partes) > 1 else ""
+                    else: # Es el último fragmento, coge todo lo que queda
+                        fragmentos_de_texto[titulo] = texto_restante
+
             
-            # PASO 6.3: Ejecutar el pase de cohesión y coherencia
-            st.toast("Paso 2/5: Mejorando cohesión y verificando coherencia del texto...")
-            with st.spinner("IA aplicando mejoras de cohesión y coherencia... (Esto puede tardar un poco)"):
-                idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                prompt_cohesion_formateado = PROMPT_COHESION_FINAL_MEJORADO.format(idioma=idioma_seleccionado)
-                response_cohesion = model.generate_content([prompt_cohesion_formateado, texto_original_con_placeholders])
-                texto_cohesionado = limpiar_respuesta_final(response_cohesion.text)
+            # --- PASO 2: PROCESAMIENTO SECUENCIAL DE FRAGMENTOS ---
+            st.toast("Paso 2/5: Revisando cohesión fragmento a fragmento...")
+            idioma = st.session_state.get('project_language', 'Español')
+            company_name = st.session_state.get('company_name', 'La UTE')
+            # Los datos maestros se pueden enriquecer con más información clave
+            datos_maestros = f"Información clave: La empresa proponente es '{company_name}'. Revisa para asegurar consistencia."
+            contexto_evolutivo = "Inicio del documento."
+            fragmentos_corregidos = {}
+            todo_ok = True
+
+            progress_bar = st.progress(0, text="Iniciando revisión secuencial...")
+
+            for i, titulo in enumerate(titulos_subapartados):
+                texto_actual = fragmentos_de_texto.get(titulo, "")
+                if not texto_actual or not texto_actual.strip():
+                    continue
+
+                progress_text = f"Procesando ({i+1}/{len(titulos_subapartados)}): {titulo}"
+                progress_bar.progress((i + 1) / len(titulos_subapartados), text=progress_text)
+                
+                # Importar el prompt aquí para asegurar que está disponible
+                from prompts import PROMPT_COHESION_POR_FRAGMENTO
+                
+                resultado = ejecutar_pase_cohesion_fragmento(
+                    model, PROMPT_COHESION_POR_FRAGMENTO, idioma, datos_maestros,
+                    contexto_evolutivo, texto_actual, titulo
+                )
+                
+                if resultado['success']:
+                    fragmentos_corregidos[titulo] = resultado['texto']
+                    contexto_evolutivo += "\n" + resultado['resumen']
+                else:
+                    st.error(resultado['error'])
+                    fragmentos_corregidos[titulo] = f"¡¡¡ERROR AL PROCESAR ESTE FRAGMENTO!!!\n{texto_actual}"
+                    todo_ok = False
+                    break # Detener en caso de error
             
-            # PASO 6.4: Reensamblar el cuerpo del documento con las imágenes
+            if not todo_ok:
+                st.error("El proceso se detuvo debido a un error. Revisa los mensajes anteriores."); return
+
+            texto_cohesionado_final = "\n".join(fragmentos_corregidos.values())
+
+            # --- PASO 3, 4 y 5: REENSAMBLAJE, INTRODUCCIÓN Y GUARDADO ---
             st.toast("Paso 3/5: Reensamblando el documento con imágenes...")
             with st.spinner("Reconstruyendo el cuerpo del documento..."):
-                cuerpo_del_documento = reensamblar_docx_con_imagenes(texto_cohesionado, mapa_de_imagenes)
+                cuerpo_del_documento = reensamblar_docx_con_imagenes(texto_cohesionado_final, mapa_de_imagenes)
                 
-            # PASO 6.5: Generar y añadir elementos finales (Introducción e Índice)
             st.toast("Paso 4/5: Generando introducción estratégica e índice...")
             with st.spinner("Creando introducción e índice final..."):
-                # Generar introducción basada en el texto YA cohesionado
-                company_name = st.session_state.get('company_name', 'La UTE')
-                prompt_intro_formateado = PROMPT_GENERAR_INTRODUCCION.format(idioma=idioma_seleccionado, nombre_empresa=company_name)
-                response_intro = model.generate_content([prompt_intro_formateado, texto_cohesionado])
+                prompt_intro_formateado = PROMPT_GENERAR_INTRODUCCION.format(idioma=idioma, nombre_empresa=company_name)
+                response_intro = model.generate_content([prompt_intro_formateado, texto_cohesionado_final])
                 introduccion_markdown = limpiar_respuesta_final(response_intro.text)
                 
-                # Crear el documento final y añadir todo en orden
                 documento_final = docx.Document()
-                estructura_memoria = st.session_state.generated_structure.get('estructura_memoria', [])
-                
-                # 1. Índice
-                generar_indice_word(documento_final, estructura_memoria)
+                generar_indice_word(documento_final, estructura)
                 documento_final.add_page_break()
                 
-                # 2. Introducción
                 documento_final.add_heading("Introducción", level=1)
                 agregar_markdown_a_word(documento_final, corregir_numeracion_markdown(introduccion_markdown))
                 documento_final.add_page_break()
                 
-                # 3. Cuerpo del documento (ya cohesionado y con imágenes)
                 for element in cuerpo_del_documento.element.body:
                     documento_final.element.body.append(element)
             
-            # PASO 6.6: Guardar el resultado final
             st.toast("Paso 5/5: Guardando versión final...")
             with st.spinner("Guardando documento final en buffer y Google Drive..."):
                 doc_io_final = io.BytesIO()
-                documento_final.save(doc_io_final)
-                doc_io_final.seek(0)
+                documento_final.save(doc_io_final); doc_io_final.seek(0)
                 
                 st.session_state.refined_doc_buffer = doc_io_final
                 original_filename = st.session_state.generated_doc_filename
                 st.session_state.refined_doc_filename = original_filename.replace("Cuerpo_", "Version_Final_Pulida_")
                 
-                # Guardar en Google Drive
                 service = st.session_state.drive_service
                 project_folder_id = st.session_state.selected_project['id']
                 active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=st.session_state.get('selected_lot'))
@@ -1713,7 +1761,7 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
 
         except Exception as e:
             st.error(f"Ocurrió un error crítico durante el ensamblaje final: {e}")
-            st.exception(e) # Esto imprimirá el traceback completo para depuración
+            st.exception(e)
 
     if st.session_state.get("refined_doc_buffer"):
         st.balloons()
@@ -1732,8 +1780,6 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
         st.button("← Volver a Fase 5 (Redacción)", on_click=go_to_phase5, use_container_width=True)
     with col_nav2:
         st.button("✅ PROCESO FINALIZADO (Volver a selección de proyecto)", on_click=back_to_project_selection_and_cleanup, use_container_width=True, type="primary")
-
-
 
 
 
