@@ -416,86 +416,90 @@ Ahora, procede a crear el **guion de planificación** para el subapartado propor
 
 
 PROMPT_REQUISITOS_CLAVE = """
-Eres un asistente experto en analizar pliegos de licitaciones públicas en España. Tu única tarea es leer el contenido de los documentos proporcionados y generar un **Análisis de Viabilidad y Requisitos Clave** en formato Markdown.
+Eres un asistente de licitaciones de élite. Tu única misión es analizar los documentos de una licitación y rellenar de forma exhaustiva la siguiente plantilla en formato Markdown.
 {contexto_lote}
 La respuesta debe estar exclusivamente en el idioma: **{idioma}**.
 
-Tu análisis debe ser exhaustivo y estar estructurado EXACTAMENTE de la siguiente manera, utilizando encabezados, negritas, listas y emojis para una máxima claridad visual. No omitas ninguna sección; si no encuentras información para un punto, indícalo con "No especificado".
+No omitas NINGUNA sección ni NINGÚN punto. Si no encuentras información explícita para un campo, debes indicarlo claramente con **"No especificado"** o **"No se menciona"**. Tu objetivo es la precisión y la exhaustividad total.
 
-# 📝 Análisis de Viabilidad y Requisitos Clave
+# 📝 Análisis Exhaustivo de Requisitos de Licitación
 
-## 1. Resumen General de la Licitación
+---
 
--   **Presupuesto Base de Licitación:** (Indica el valor o "No especificado").
+## 1. Resumen Genérico de la Licitación
+
+-   **Presupuesto Base de Licitación:** (Indica el valor, con y sin IVA si es posible).
 -   **Valor Estimado del Contrato:** (Indica el valor o "No especificado").
 -   **Duración del Contrato:** (Indica la duración inicial).
--   **Prórrogas:** (Indica si se contemplan, y cómo, o "No especificado").
--   **Lotes:** (Indica "Sí" o "No". Si es "Sí", especifica si hay límite al número de lotes a adjudicar a un mismo licitador).
--   **Lugar de Presentación:** (Indica el lugar o portal de presentación).
--   **Modificaciones del Contrato:** (Menciona si se prevén y bajo qué condiciones, o "No especificado").
--   **Admisión de Variantes:** (Indica "Sí" o "No").
+-   **Prórroga:** (Indica si se contempla, su duración y condiciones, o "No se menciona").
+-   **Lotes:** (Indica "Sí" o "No". Si es "Sí", especifica si existe limitación al número de lotes que puede ganar un mismo licitador).
+-   **Lugar de Presentación:** (Indica el lugar o portal electrónico).
+-   **Gastos de Publicidad:** (Indica si son a cargo del adjudicatario y la cuantía, o "No se menciona").
 
 ---
 
-## 2. Requisitos de Documentación Administrativa
+## 2. Documentación Administrativa y Legal
 
-### 📋 Acreditación de la Empresa
--   **Escrituras de la Sociedad / DNI Autónomo:** (Confirma si se solicita la documentación que acredite la personalidad jurídica y capacidad de obrar).
--   **Pertenencia a Grupo de Empresas:** (Indica si se debe declarar o no).
--   **Inscripción en ROLECE:** (Indica si es obligatorio o si exime de presentar otra documentación).
--   **Habilitación Empresarial o Profesional:** (Especifica si se requiere alguna habilitación o registro oficial para ejercer la actividad).
+### Acreditación de la Empresa
+-   **Escrituras Sociedad / DNI Autónomo:** (Confirma si se solicita la documentación que acredite la personalidad jurídica y capacidad de obrar).
+-   **Pertenencia a Grupo de Empresas:** (Indica si se debe declarar).
+-   **Inscripción en ROLECE:** (Indica si es obligatorio o si exime de presentar otra documentación. Especifica si se refiere al Registro Oficial de Licitadores y Empresas Clasificadas del Estado).
 
-### 👥 Aspectos Laborales
--   **Nº de Trabajadores en Plantilla:** (Indica si se debe declarar el tamaño de la plantilla).
--   **Trabajadores con Contrato Indefinido:** (Indica si se valora o se exige un porcentaje mínimo).
--   **Trabajadores con Discapacidad:** (Indica si se exige cumplir con la cuota de reserva o si es un criterio de adjudicación).
--   **Plan de Igualdad:** (Indica si es obligatorio presentarlo).
--   **Plan de Acoso:** (Indica si se debe disponer de un protocolo o plan contra el acoso).
+### Aspectos Laborales y Sociales
+-   **Cantidad de Trabajadores en Plantilla:** (Indica si se debe declarar el número total).
+-   **Trabajadores con Contrato Indefinido:** (Indica si se debe declarar el número o porcentaje).
+-   **Trabajadores con Discapacidad:** (Indica si se exige cumplir la cuota de reserva del 2% o si es un criterio de valoración).
+-   **Plan de Igualdad:** (Indica si es obligatorio presentarlo según el tamaño de la empresa).
+-   **Plan de Acoso:** (Indica si se debe disponer de un protocolo o plan contra el acoso sexual y por razón de sexo).
 -   **Plan de Prevención de Riesgos Laborales (PRL):** (Confirma si se debe acreditar la disposición de un plan de PRL).
--   **Subrogación de Personal:** (Indica "Sí" o "No". Si es "Sí", detalla las condiciones si aparecen en el pliego).
 
 ---
 
-## 3. Requisitos de Solvencia y Clasificación
+## 3. Solvencia, Clasificación y Capacidades
 
--   **Solvencia Económica:** (Resume los requisitos: volumen de negocios, seguros de responsabilidad civil, etc.).
--   **Solvencia Técnica:** (Resume los requisitos: experiencia, equipo técnico, medios materiales, certificados de calidad, etc.).
--   **Clasificación Empresarial:** (Indica si se exige y, en caso afirmativo, cuál es el grupo, subgrupo y categoría).
+-   **Solvencia Económica:** (Resume los requisitos: volumen de negocios anual, patrimonio neto, seguros de responsabilidad civil, etc.).
+-   **Solvencia Técnica:** (Resume los requisitos: relación de trabajos anteriores, técnicos o unidades técnicas, certificados de calidad, etc.).
+-   **Clasificación Empresarial:** (Indica si se exige. En caso afirmativo, detalla Grupo, Subgrupo y Categoría).
 -   **Integración de Solvencia con Medios Externos:** (Indica si está permitida y bajo qué condiciones).
+-   **Habilitación Empresarial o Profesional:** (Especifica si se requiere alguna habilitación, autorización o registro oficial para ejercer la actividad).
+-   **Certificados de Calidad/Gestión:** (Lista los certificados exigidos u valorados, ej: ISO 9001, ISO 14001, ISO 27001, ENS, ISO 45001, etc.).
+-   **Medios Personales Adscritos:** (Detalla los perfiles, titulaciones, formación y experiencia mínima del equipo que se debe adscribir al contrato).
+-   **Medios Materiales Adscritos:** (Detalla la maquinaria, vehículos u otros medios materiales que se deben adscribir).
 
 ---
 
-## 4. Criterios de Adjudicación (Juicios de Valor)
+## 4. Criterios de Adjudicación
 
-### ✨ Criterios Evaluables Mediante Juicio de Valor
-(Lista aquí los criterios subjetivos que se valorarán, ej: "Calidad de la metodología propuesta: hasta 40 puntos").
-
-### 🔢 Criterios Evaluables Mediante Fórmulas
-(Lista aquí los criterios objetivos, ej: "Oferta económica: hasta 50 puntos", "Ampliación del plazo de garantía: hasta 10 puntos").
+-   **Criterios Evaluables Mediante Juicio de Valor:** (Lista los criterios subjetivos y su ponderación. Ej: Memoria Técnica (40 puntos), Plan de Calidad (10 puntos)).
+-   **Criterios Evaluables Mediante Aplicación de Fórmulas:** (Lista los criterios objetivos y su ponderación. Ej: Oferta Económica (35 puntos), Reducción de Plazo (10 puntos), Ampliación de Garantía (5 puntos)).
 
 ---
 
 ## 5. Condiciones y Reglas de la Oferta
 
--   **Ofertas Anormalmente Bajas:** (Resume el procedimiento para detectarlas y justificarlas).
--   **Criterios de Desempate:** (Enumera los criterios que se aplicarán en caso de empate).
+-   **Admisibilidad de Variantes:** (Indica "Sí" o "No").
+-   **Ofertas Anormalmente Bajas (Temerarias):** (Resume el umbral o procedimiento para detectarlas y justificarlas).
+-   **Criterios de Desempate:** (Enumera los criterios que se aplicarán en caso de empate, en el orden de prelación indicado).
 -   **Garantías:**
     -   **Garantía Provisional:** (Indica si se exige y su cuantía).
-    -   **Garantía Definitiva:** (Indica el porcentaje sobre el presupuesto de adjudicación).
+    -   **Garantía Definitiva:** (Indica el porcentaje sobre el precio de adjudicación, IVA excluido).
     -   **Garantía Complementaria:** (Indica si se exige y en qué casos).
+-   **Plazo de Garantía:** (Indica el plazo mínimo exigido y si la ampliación es un criterio de adjudicación).
 -   **Penalidades:** (Describe brevemente el régimen de penalidades por incumplimiento).
 -   **Información Confidencial:** (Indica si se debe realizar una declaración de confidencialidad y cómo).
 -   **Protección de Datos:** (Menciona si hay cláusulas específicas sobre el tratamiento de datos personales).
 -   **Condiciones Especiales de Ejecución:** (Indica si existen, especialmente de carácter social, medioambiental o de innovación).
--   **Cesión y Subcontratación:** (Resume las condiciones y límites para ceder o subcontratar el contrato).
+-   **Cesión del Contrato:** (Indica si se permite y bajo qué condiciones).
+-   **Subcontratación:** (Resume las condiciones, límites y obligaciones, como el periodo de pago a subcontratistas).
 
 ---
 
-## 6. Requisitos Específicos del Contrato
+## 6. Requisitos Específicos según Tipo de Contrato
 
--   **¿Visita a Instalaciones?:** (Indica "Sí, es obligatoria/recomendada" o "No").
--   **¿Entrega de Muestras?:** (Indica "Sí" o "No". Si es "Sí", describe qué se debe entregar).
--   **Características Técnicas / Ficha Técnica:** (Confirma si se debe presentar una ficha técnica detallada del producto o servicio).
+-   **Subrogación de Personal:** (Indica "Sí" o "No". Si es "Sí", detalla si se aporta lista de personal subrogable).
+-   **Visita a Instalaciones:** (Indica si es obligatoria o recomendada, y las fechas o procedimiento para solicitarla).
+-   **Entrega de Muestras:** (Indica si es un requisito y qué se debe entregar).
+-   **Fichas Técnicas:** (Confirma si se deben presentar características o fichas técnicas de los suministros o materiales a emplear).
 """
 
 PROMPT_GEMINI_GUION_PLANIFICACION = """
