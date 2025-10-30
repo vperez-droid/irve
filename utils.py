@@ -297,22 +297,37 @@ def wrap_html_fragment(html_fragment):
 
 def html_a_imagen(html_string, output_filename="temp_image.png"):
     """
-    Convierte una cadena de HTML en una imagen PNG usando wkhtmltoimage.
-    Devuelve la ruta del fichero si existe; None si falla.
+    Convierte una cadena de HTML a una imagen PNG y devuelve su contenido en bytes.
     """
     try:
         path_wkhtmltoimage = os.popen('which wkhtmltoimage').read().strip()
+        if not path_wkhtmltoimage:
+            st.error("wkhtmltoimage no encontrado. Asegúrate de que está instalado y en el PATH.")
+            return None
+            
         config = imgkit.config(wkhtmltoimage=path_wkhtmltoimage)
         options = {'format': 'png', 'encoding': 'UTF-8', 'width': '800', 'quiet': ''}
 
+        # Genera la imagen y la guarda en el archivo temporal
         imgkit.from_string(html_string, output_filename, config=config, options=options)
-        return output_filename if os.path.exists(output_filename) else None
+
+        # Si la imagen se creó correctamente...
+        if os.path.exists(output_filename):
+            # ...ábrela en modo lectura binaria ('rb')...
+            with open(output_filename, 'rb') as f:
+                image_bytes = f.read()  # ...lee su contenido binario...
+            
+            # (Buena práctica) Elimina el archivo temporal del disco
+            os.remove(output_filename)
+            
+            # ...y devuelve los bytes de la imagen.
+            return image_bytes
+        else:
+            return None # Si la imagen no se creó, devuelve None
+
     except Exception as e:
         st.error(f"Error al convertir HTML a imagen: {e}")
         return None
-# =============================================================================
-#         ARQUITECTURA DE ANÁLISIS MULTIMODAL CON CACHÉ
-# =============================================================================
 
 def _analizar_docx_core(file_bytes_io, nombre_archivo):
     """(FUNCIÓN INTERNA) Analiza un .docx extrayendo texto e imágenes."""
