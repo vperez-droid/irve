@@ -1625,6 +1625,8 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
 # =============================================================================
 #           PÁGINA FASE 6: ENSAMBLAJE FINAL
 # =============================================================================
+# Pega este código en ui_pages.py, reemplazando la función phase_6_page antigua
+
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
     st.markdown("<h3>FASE 6: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
     
@@ -1658,7 +1660,13 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
                 
                 st.toast("Generando introducción estratégica...")
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
-                prompt_intro_formateado = PROMPT_GENERAR_INTRODUCCION.format(idioma=idioma_seleccionado)
+                
+                # <-- ¡CAMBIO CLAVE 1/2! Obtenemos el nombre de la empresa de la sesión.
+                company_name = st.session_state.get('company_name', 'La UTE')
+                
+                # <-- ¡CAMBIO CLAVE 2/2! Lo pasamos al formatear el prompt de la introducción.
+                prompt_intro_formateado = PROMPT_GENERAR_INTRODUCCION.format(idioma=idioma_seleccionado, nombre_empresa=company_name)
+                
                 response_intro = model.generate_content([prompt_intro_formateado, texto_completo_original])
                 introduccion_markdown = limpiar_respuesta_final(response_intro.text)
                 
