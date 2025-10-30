@@ -1,3 +1,5 @@
+# utils.py - VERSIÓN COMPLETA Y CORREGIDA
+
 import streamlit as st
 import re
 import os
@@ -19,6 +21,7 @@ from drive_utils import find_or_create_folder, get_or_create_lot_folder_id, clea
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
 # =============================================================================
 
+# ¡AQUÍ ESTÁN TUS CONSTANTES CALIBRADAS!
 CARACTERES_POR_PAGINA_MIN = 2100
 CARACTERES_POR_PAGINA_MAX = 2200
 
@@ -391,6 +394,10 @@ def generar_fragmento_individual(model, prompt_info, reintentos=5, delay_inicial
     # Si todos los reintentos fallan
     return {'success': False, 'error': f"Límite de API excedido tras {reintentos} intentos.", 'prompt_id': prompt_id}
 
+
+# -----------------------------------------------------------------------------
+#      ¡AQUÍ ESTÁ LA FUNCIÓN QUE FALTABA!
+# -----------------------------------------------------------------------------
 def apply_safety_margin_to_plan(generated_structure, safety_margin_factor=0.85):
     """
     Aplica un margen de seguridad al plan de extensión de un índice generado.
@@ -480,5 +487,3 @@ def apply_safety_margin_to_plan(generated_structure, safety_margin_factor=0.85):
         st.warning(f"No se pudo aplicar el margen de seguridad: {e}")
         # Si algo falla, devolvemos la estructura original para no romper la app
         return generated_structure
-
-# --- FIN DE LA NUEVA FUNCIÓN ---
