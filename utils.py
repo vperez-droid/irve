@@ -19,8 +19,8 @@ from drive_utils import find_or_create_folder, get_or_create_lot_folder_id, clea
 #           FUNCIONES DE PROCESAMIENTO DE TEXTO Y JSON
 # =============================================================================
 
-CARACTERES_POR_PAGINA_MIN = 3500
-CARACTERES_POR_PAGINA_MAX = 3800
+CARACTERES_POR_PAGINA_MIN = 2100
+CARACTERES_POR_PAGINA_MAX = 2200
 
 CONTEXTO_LOTE_TEMPLATE = """
 
