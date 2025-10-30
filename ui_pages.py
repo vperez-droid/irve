@@ -595,7 +595,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 #           FASE 3: CENTRO DE MANDO DE GUIONES
 # =============================================================================
 
-def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active_lot_folder_id, titulo, indicaciones_completas, contexto_adicional_lotes="", project_language='Español'):
+def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active_lot_folder_id, titulo, indicaciones_completas, contexto_adicional_lotes="", project_language='Español', company_name='La UTE'): # <-- ¡CAMBIO 1: AÑADIMOS EL PARÁMETRO company_name!
     """
     (VERSIÓN MEJORADA)
     Genera el guion para un subapartado. Ahora analiza correctamente los archivos .docx
@@ -613,7 +613,13 @@ def ejecutar_generacion_con_gemini(model, credentials, project_folder_id, active
         pliegos_folder_id = find_or_create_folder(service, "Pliegos", parent_id=project_folder_id)
         
         contexto_lote_actual = get_lot_context()
-        prompt = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(idioma=project_language, contexto_lote=contexto_lote_actual)
+        
+        # <-- ¡CAMBIO 2: USAMOS company_name AL FORMATEAR EL PROMPT!
+        prompt = PROMPT_GEMINI_PROPUESTA_ESTRATEGICA.format(
+            idioma=project_language, 
+            contexto_lote=contexto_lote_actual, 
+            nombre_empresa=company_name
+        )
         
         contenido_ia = [prompt, "--- INDICACIONES PARA ESTE APARTADO ---\n" + json.dumps(indicaciones_completas, indent=2, ensure_ascii=False)]
 
