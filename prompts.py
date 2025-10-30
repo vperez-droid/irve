@@ -329,14 +329,18 @@ Está terminantemente prohibido mencionar, insinuar o incluir cualquier dato rel
 
 **Ejemplo de inicio:** "El presente proyecto aborda la necesidad de [problema principal del cliente] a través de una solución integral que combina [pilar 1 de la solución] con [pilar 2 de la solución], garantizando [resultado clave para el cliente]."
 """
+# Pega esto en prompts.py, reemplazando la versión anterior de PROMPT_COHESION_FINAL
+
 PROMPT_COHESION_FINAL =  """
-Actúas como un Editor Técnico experto y meticuloso. Tu misión es mejorar la cohesión, la fluidez y la coherencia lógica de un borrador de memoria técnica. NO debes reescribir apartados enteros ni eliminar contenido. Tu trabajo es de conexión, pulido y verificación.
+Actúas como un Editor Técnico y Auditor de Calidad. Tu misión es asegurar la cohesión, fluidez y, sobre todo, la coherencia ABSOLUTA de una memoria técnica.
 Escribe el contenido solicitado en **idioma: {idioma}**.
 
-Te proporcionaré el texto completo del borrador. Debes devolver una versión mejorada aplicando ÚNICAMENTE las siguientes reglas:
+Te proporcionaré el texto completo del borrador. Debes devolver una versión mejorada aplicando rigurosamente las siguientes reglas:
 
-1.  **VERIFICAR COHERENCIA LÓGICA (TAREA CRÍTICA):** Tu principal prioridad es detectar y corregir suavemente cualquier contradicción o inconsistencia en el documento. Asegúrate de que los datos, nombres de tecnologías o metodologías sean consistentes a lo largo de todo el texto.
-    - **Ejemplo de corrección:** Si en el apartado 2.2 se menciona que el agente extintor es "espuma F-500" y en el 4.1 se habla de "polvo polivalente ABC" para el mismo fin, debes unificarlo al término correcto según el contexto principal (probablemente F-500) para eliminar la contradicción.
+1.  **ELIMINAR INCONSISTENCIAS (REGLA CRÍTICA DE EXCLUSIÓN):** Tu máxima prioridad es detectar y **eliminar por completo** cualquier contradicción o inconsistencia en el documento. Las inconsistencias son motivo de descalificación.
+    - Si se menciona 'tecnología X' en un apartado y 'tecnología Y' para el mismo fin en otro, **debes unificar al término correcto y consistente** a lo largo de todo el texto.
+    - Si un plazo se define como '2 meses' y en otra parte como '10 semanas', **debes corregirlo para que el dato sea coherente en todo el documento**.
+    - Tu corrección debe ser **decisiva y definitiva**, no una simple sugerencia. No puede quedar ninguna contradicción.
 
 2.  **AÑADIR REFERENCIAS CRUZADAS:** Cuando un apartado mencione un concepto ya introducido, AÑADE una referencia explícita para crear un hilo conductor. (Ej: "...se utilizará la metodología Agile-Scrum **(descrita en el apartado 1.1)**.").
 
@@ -344,14 +348,13 @@ Te proporcionaré el texto completo del borrador. Debes devolver una versión me
 
 4.  **UNIFICAR TERMINOLOGÍA:** Detecta inconsistencias (ej: "stakeholders" y "partes interesadas") y unifica al término más apropiado y profesional para el contexto.
 
-5.  **REDUCIR REPETICIÓN:** Evita el uso excesivo de la misma palabra o nombre (como el nombre de la empresa proponente) en párrafos consecutivos. Reestructura las frases o usa sinónimos cuando sea apropiado, sin cambiar el significado.
+5.  **REDUCIR REPETICIÓN (TAREA CRÍTICA):** Evita el uso excesivo de la misma palabra o nombre (como el nombre de la empresa proponente) en párrafos consecutivos. Reestructura las frases o usa sinónimos cuando sea apropiado, sin cambiar el significado.
 
-6.  **NO ELIMINAR CONTENIDO NI MARCADORES:** Está **ESTRICTAMENTE PROHIBIDO** eliminar párrafos, datos o los marcadores de imagen con el formato `[--IMAGEN_ID_XXX--]`. Tu trabajo es **AÑADIR** cohesión y **CORREGIR** inconsistencias.
+6.  **NO ELIMINAR CONTENIDO NI MARCADORES:** Está **ESTRICTAMENTE PROHIBIDO** eliminar párrafos, datos o los marcadores de imagen con el formato `[--IMAGEN_ID_XXX--]`. Tu trabajo es **AÑADIR** cohesión y **CORREGIR** inconsistencias. Los marcadores de imagen deben permanecer intactos y en su posición original.
 
 Genera únicamente el texto completo y mejorado en formato Markdown.
 """
 
-Con esta Fase 6 mejorada y el nuevo prompt, no solo preservarás la integridad visual de tus documentos, sino que también elevarás su calidad profesional al garantizar que sean lógicamente coherentes y estén libres de contradicciones.
 
 PROMPT_GPT_TABLA_PLANIFICACION = """
 **[ROL Y OBJETIVO ABSOLUTAMENTE CRÍTICO]**
