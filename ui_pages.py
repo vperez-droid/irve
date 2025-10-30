@@ -427,6 +427,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
     st.markdown("Revisa el índice, la guía de redacción y el plan estratégico. Puedes hacer ajustes con feedback, regenerarlo todo desde cero, o aceptarlo para continuar.")
     st.markdown("---")
     
+    # --- Verificaciones iniciales y carga de datos ---
     service = st.session_state.drive_service
     project_folder_id = st.session_state.selected_project['id']
     selected_lot = st.session_state.get('selected_lot')
@@ -444,6 +445,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
     
     st.button("← Volver a la gestión de archivos (Fase 2)", on_click=go_to_phase2)
 
+    # --- Lógica interna para la regeneración con feedback (MODIFICADA) ---
     def handle_regeneration_with_feedback():
         feedback_text = st.session_state.get("feedback_area", "")
         if not feedback_text.strip():
@@ -485,17 +487,32 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
 
                 json_limpio_str_regenerado = limpiar_respuesta_json(response_regeneracion.text)
                 
+                # -----------------------------------------------------------------
+                #                  INICIO DE LA MODIFICACIÓN CLAVE
+                # -----------------------------------------------------------------
                 if json_limpio_str_regenerado:
-                    st.session_state.generated_structure = json.loads(json_limpio_str_regenerado)
-                    st.toast("¡Estructura regenerada con tu feedback!")
-                    st.session_state.feedback_area = ""
+                    # 1. Cargamos el JSON que la IA regeneró con el feedback.
+                    regenerated_structure = json.loads(json_limpio_str_regenerado)
+
+                    # 2. Aplicamos DE NUEVO el margen de seguridad a esta nueva versión.
+                    adjusted_structure = apply_safety_margin_to_plan(regenerated_structure, safety_margin_factor=0.85)
+
+                    # 3. Guardamos la versión AJUSTADA en el estado de la sesión.
+                    st.session_state.generated_structure = adjusted_structure
+                    
+                    st.toast("¡Estructura regenerada y ajustada con tu feedback!")
+                    st.session_state.feedback_area = "" # Limpiamos el área de texto
                     st.rerun()
+                # -----------------------------------------------------------------
+                #                   FIN DE LA MODIFICACIÓN CLAVE
+                # -----------------------------------------------------------------
                 else:
                     st.error("La IA no devolvió una estructura JSON válida tras la regeneración.")
 
             except Exception as e:
                 st.error(f"Ocurrió un error crítico durante la regeneración: {e}")
 
+    # --- Interfaz de Usuario para mostrar resultados y acciones ---
     with st.container(border=True):
         st.subheader("Índice Propuesto y Guía de Redacción")
         estructura = st.session_state.generated_structure.get('estructura_memoria')
@@ -523,7 +540,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
                             'Puntuación': item.get('puntuacion_sugerida', 'N/D')
                         })
                     df = pd.DataFrame(plan_data)
-                    st.write("Distribución de Contenido y Puntuación:")
+                    st.write("Distribución de Contenido y Puntuación (Ajustada con margen de seguridad):")
                     st.dataframe(df, use_container_width=True)
                 except Exception as e: st.error(f"No se pudo mostrar el plan de extensión. Error: {e}")
             else: st.info("No se encontró un 'plan_extension' en la estructura generada.")
@@ -548,6 +565,7 @@ def phase_2_results_page(model, go_to_phase2, go_to_phase3, handle_full_regenera
         with st.spinner("Guardando análisis final y preparando carpetas..."):
             try:
                 index_folder_id, index_filename = get_lot_index_info(service, project_folder_id, selected_lot)
+                # Guardamos la estructura ya ajustada
                 json_bytes = json.dumps(st.session_state.generated_structure, indent=2, ensure_ascii=False).encode('utf-8')
                 mock_file_obj = io.BytesIO(json_bytes)
                 mock_file_obj.name = index_filename
