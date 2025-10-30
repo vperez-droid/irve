@@ -507,3 +507,69 @@ def apply_safety_margin_to_plan(generated_structure, safety_margin_factor=0.85):
         st.warning(f"No se pudo aplicar el margen de seguridad: {e}")
         # Si algo falla, devolvemos la estructura original para no romper la app
         return generated_structure
+
+
+def desensamblar_docx(docx_buffer):
+    """
+    Analiza un documento de Word desde un buffer, extrae todo el texto y mapea las imágenes.
+    Devuelve el texto con placeholders y un diccionario que asocia cada placeholder con su imagen.
+    """
+    texto_para_ia = ""
+    mapa_de_imagenes = {}
+    image_counter = 0
+    
+    docx_buffer.seek(0)
+    doc = docx.Document(docx_buffer)
+
+    # El cuerpo del documento contiene párrafos y tablas.
+    # Esta es una forma simplificada de recorrerlo. Una implementación real puede necesitar ser más robusta.
+    for p in doc.paragraphs:
+        # Busca imágenes dentro de cada párrafo
+        if 'graphicData' in p._p.xml:
+            # Encuentra todos los IDs de relación de imagen en el XML del párrafo
+            rids = p._p.xpath('.//a:blip/@r:embed')
+            for rid in rids:
+                image_counter += 1
+                placeholder = f"[--IMAGEN_ID_{image_counter:03d}--]"
+                
+                # Obtiene la imagen real usando el ID de relación
+                image_part = doc.part.related_parts[rid]
+                image_blob = image_part.blob
+                
+                mapa_de_imagenes[placeholder] = image_blob
+                texto_para_ia += f"\n{placeholder}\n"
+        else:
+            # Si no hay imagen, simplemente añade el texto del párrafo
+            texto_para_ia += p.text + "\n"
+            
+    return texto_para_ia, mapa_de_imagenes
+
+
+def reensamblar_docx_con_imagenes(texto_cohesionado, mapa_de_imagenes):
+    """
+    Toma el texto procesado por la IA (con placeholders) y el mapa de imágenes,
+    y reconstruye un nuevo documento de Word con el texto y las imágenes en su lugar.
+    """
+    doc_final = docx.Document()
+    
+    # Divide el texto por el patrón de los placeholders, manteniendo los placeholders en la lista
+    fragmentos = re.split(r'(\[--IMAGEN_ID_\d{3}--\])', texto_cohesionado)
+    
+    for fragmento in fragmentos:
+        if not fragmento:
+            continue
+            
+        if fragmento in mapa_de_imagenes:
+            # Si el fragmento es un placeholder, busca la imagen en el mapa y la añade
+            image_data = mapa_de_imagenes[fragmento]
+            try:
+                # Añade la imagen, estableciendo un ancho estándar para consistencia
+                doc_final.add_picture(io.BytesIO(image_data), width=docx.shared.Inches(6.0))
+            except Exception as e:
+                p_error = doc_final.add_paragraph()
+                p_error.add_run(f"[Error al insertar imagen {fragmento}: {e}]").italic = True
+        else:
+            # Si es texto, utiliza tu función existente para añadirlo con formato Markdown
+            agregar_markdown_a_word(doc_final, fragmento)
+            
+    return doc_final
