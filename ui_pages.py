@@ -112,32 +112,26 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         go_to_project_selection(); st.rerun()
         return
 
-    # --- CORRECCIÓN 1: Nombres de archivo únicos por proyecto ---
     project_name = st.session_state.selected_project['name']
     safe_project_name = re.sub(r'[\\/*?:"<>|]', "", project_name).replace(' ', '_')
     ANALYSIS_FILENAME = f"Analisis_de_Viabilidad_{safe_project_name}.docx"
-    
-    # Este nombre de archivo puede seguir siendo genérico porque está dentro de la carpeta del proyecto
     LOTES_FILENAME = "resultado_analisis_lotes.json"
 
     project_folder_id = st.session_state.selected_project['id']
     service = st.session_state.drive_service
     st.info(f"Proyecto activo: **{project_name}**.")
 
-    # --- CORRECCIÓN 2: Captura del nombre de la empresa cliente ---
+    # --- Captura del nombre de la empresa cliente (sin cambios) ---
     with st.container(border=True):
         st.subheader("🏢 Identificación de la Empresa Cliente")
-        
         if 'company_name' not in st.session_state:
             st.session_state.company_name = "La UTE"
-
         company_name_input = st.text_input(
             "Introduce el nombre de la empresa para la que licitas (o 'La UTE' si es una unión temporal):",
             value=st.session_state.get('company_name', 'La UTE'),
             key="company_name_input"
         )
         st.session_state.company_name = company_name_input
-
         if st.session_state.company_name:
             st.success(f"Los documentos se generarán para: **{st.session_state.company_name}**")
         else:
@@ -170,6 +164,7 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
     def detectar_lotes():
         with st.spinner("Analizando documentos para detectar lotes..."):
             try:
+                # ... (El contenido de esta función no necesita cambios)
                 contenido_ia = [PROMPT_DETECTAR_LOTES]
                 for file_info in documentos_pliegos:
                     file_bytes_io = download_file_from_drive_cached(service, file_info['id'])
@@ -189,43 +184,33 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                 try:
                     docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
                     json_bytes = json.dumps(resultado, indent=2).encode('utf-8')
-                    mock_file = io.BytesIO(json_bytes)
-                    mock_file.name = LOTES_FILENAME
-                    mock_file.type = "application/json"
-                    
+                    mock_file = io.BytesIO(json_bytes); mock_file.name = LOTES_FILENAME; mock_file.type = "application/json"
                     existing_file_id = find_file_by_name(service, LOTES_FILENAME, docs_app_folder_id)
-                    if existing_file_id:
-                        delete_file_from_drive(service, existing_file_id)
-                    
+                    if existing_file_id: delete_file_from_drive(service, existing_file_id)
                     upload_file_to_drive(service, mock_file, docs_app_folder_id)
                     st.toast("Resultado del análisis de lotes guardado en Drive.")
                 except Exception as e:
                     st.warning(f"No se pudo guardar el resultado del análisis de lotes en Drive: {e}")
-
                 st.rerun()
             except Exception as e:
                 st.error(f"Ocurrió un error al detectar lotes: {e}")
 
-    # --- Selección de Lote (sin cambios) ---
+    # --- Selección de Lote (sin cambios en la lógica) ---
     st.header("2. Selección de Lote")
-    if 'detected_lotes' not in st.session_state:
-        st.session_state.detected_lotes = None
-    # ... (El resto de esta sección de UI no cambia)
+    if 'detected_lotes' not in st.session_state: st.session_state.detected_lotes = None
+    
     if st.session_state.detected_lotes is None:
         try:
             docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=project_folder_id)
             lotes_file_id = find_file_by_name(service, LOTES_FILENAME, docs_app_folder_id)
-            
             if lotes_file_id:
                 with st.spinner("Cargando análisis de lotes guardado desde Drive..."):
                     file_bytes = download_file_from_drive_cached(service, lotes_file_id).getvalue()
                     resultado = json.loads(file_bytes.decode('utf-8'))
                     lotes = resultado.get("lotes_encontrados", [])
                     st.session_state.detected_lotes = lotes if lotes else ["SIN_LOTES"]
-                    st.toast("Análisis de lotes cargado desde Drive.")
-                    st.rerun()
-        except Exception as e:
-            st.warning(f"No se pudo cargar el análisis de lotes guardado. Puede que necesites generarlo de nuevo. Error: {e}")
+                    st.toast("Análisis de lotes cargado desde Drive."); st.rerun()
+        except Exception:
             st.session_state.detected_lotes = "ERROR"
     
     if st.session_state.detected_lotes is None or st.session_state.detected_lotes == "ERROR":
@@ -233,36 +218,21 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         st.button("Analizar Lotes en los Documentos", on_click=detectar_lotes, type="primary", use_container_width=True, disabled=not documentos_pliegos)
     
     elif st.session_state.detected_lotes == ["SIN_LOTES"]:
-        st.success("✔️ No se han detectado lotes en la documentación. Se realizará un análisis general.")
-        if st.session_state.selected_lot is None:
-            st.session_state.selected_lot = OPCION_ANALISIS_GENERAL
-        st.button("🔄 Forzar Re-análisis de Lotes", on_click=detectar_lotes, help="Vuelve a analizar los documentos si has subido nuevos archivos.", use_container_width=True)
-
+        st.success("✔️ No se han detectado lotes. Se realizará un análisis general.")
+        if st.session_state.selected_lot is None: st.session_state.selected_lot = OPCION_ANALISIS_GENERAL
+        st.button("🔄 Forzar Re-análisis de Lotes", on_click=detectar_lotes, use_container_width=True)
     else:
         st.success("¡Se han detectado lotes en la documentación!")
-        if st.session_state.get('selected_lot') is None and st.session_state.detected_lotes:
-            st.session_state.selected_lot = st.session_state.detected_lotes[0]
-        
         opciones_lotes = st.session_state.detected_lotes + [OPCION_ANALISIS_GENERAL]
-        current_selection = st.session_state.get('selected_lot')
-        
-        try:
-            index = opciones_lotes.index(current_selection) if current_selection in opciones_lotes else 0
-        except ValueError:
-            index = 0
-            
+        current_selection = st.session_state.get('selected_lot', opciones_lotes[0])
+        index = opciones_lotes.index(current_selection) if current_selection in opciones_lotes else 0
         def on_lot_change():
-            new_lot = st.session_state.lot_selector_key
-            if st.session_state.get('selected_lot') != new_lot:
-                st.session_state.selected_lot = new_lot
-                if 'analysis_doc_id' in st.session_state: del st.session_state['analysis_doc_id']
-                st.toast(f"Lote cambiado a: {new_lot}")
+            st.session_state.selected_lot = st.session_state.lot_selector_key
+            # No es necesario borrar analysis_doc_id aquí, la nueva lógica lo gestiona
+        st.selectbox("Elige el lote al que quieres presentarte:", options=opciones_lotes, index=index, key="lot_selector_key", on_change=on_lot_change)
+        st.button("🔄 Forzar Re-análisis de Lotes", on_click=detectar_lotes, use_container_width=True)
 
-        st.selectbox("Elige el lote al que quieres presentarte o cámbialo si es necesario:", options=opciones_lotes, index=index, key="lot_selector_key", on_change=on_lot_change)
-        st.button("🔄 Forzar Re-análisis de Lotes", on_click=detectar_lotes, help="Vuelve a analizar los documentos si has subido nuevos archivos.", use_container_width=True)
-
-
-    # --- Extracción de Requisitos Clave (la lógica ahora usa el ANALYSIS_FILENAME único) ---
+    # --- Extracción de Requisitos Clave (SECCIÓN CORREGIDA) ---
     if st.session_state.get('selected_lot') is not None:
         st.markdown("---")
         st.header("3. Extracción de Requisitos Clave")
@@ -276,12 +246,20 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
         active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=selected_lot_name)
         docs_app_folder_id = find_or_create_folder(service, "Documentos aplicación", parent_id=active_lot_folder_id)
         
-        if 'analysis_doc_id' not in st.session_state:
-            st.session_state.analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
+        # =====================================================================
+        #           INICIO DE LA CORRECCIÓN CLAVE 1 (BUG "ANÁLISIS FANTASMA")
+        # =====================================================================
+        # Siempre verificamos en Drive para tener el estado más reciente, en lugar
+        # de confiar en un valor potencialmente obsoleto de la sesión.
+        analysis_doc_id = find_file_by_name(service, ANALYSIS_FILENAME, docs_app_folder_id)
+        # =====================================================================
+        #           FIN DE LA CORRECCIÓN CLAVE 1
+        # =====================================================================
 
         def generate_and_save_analysis():
-            with st.spinner("🧠 Descargando y analizando documentos con Gemini..."):
+            with st.spinner("🧠 Analizando documentos con Gemini..."):
                 try:
+                    # ... (El contenido de esta función no necesita cambios)
                     idioma = st.session_state.get('project_language', 'Español')
                     contexto_lote = get_lot_context()
                     prompt = PROMPT_REQUISITOS_CLAVE.format(idioma=idioma, contexto_lote=contexto_lote)
@@ -301,25 +279,38 @@ def phase_1_viability_page(model, go_to_project_selection, go_to_phase2):
                     agregar_markdown_a_word(documento, response.text)
                     buffer = io.BytesIO()
                     documento.save(buffer); buffer.seek(0)
-                    buffer.name = ANALYSIS_FILENAME # Usa el nombre de archivo único
+                    buffer.name = ANALYSIS_FILENAME
                     buffer.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     
-                    if st.session_state.get('analysis_doc_id'):
-                        delete_file_from_drive(service, st.session_state['analysis_doc_id'])
+                    if analysis_doc_id: # Usamos la variable fresca que hemos consultado
+                        delete_file_from_drive(service, analysis_doc_id)
                         
-                    new_file_id = upload_file_to_drive(service, buffer, docs_app_folder_id)
-                    st.session_state.analysis_doc_id = new_file_id
-                    st.toast("✅ ¡Análisis guardado en tu Drive!")
-                    st.rerun()
+                    upload_file_to_drive(service, buffer, docs_app_folder_id)
+                    st.toast("✅ ¡Análisis guardado en tu Drive!"); st.rerun()
                 except Exception as e:
                     st.error(f"Ocurrió un error crítico durante el análisis: {e}")
 
-        if st.session_state.analysis_doc_id:
+        if analysis_doc_id:
             st.success("✔️ Ya existe un análisis de viabilidad guardado para este proyecto/lote.")
-            if st.button("📄 Descargar Análisis Guardado", use_container_width=True):
-                with st.spinner("Descargando desde Drive..."):
-                    file_bytes = download_file_from_drive_cached(service, st.session_state.analysis_doc_id)
-                    st.download_button(label="¡Listo! Haz clic aquí para descargar", data=file_bytes, file_name=ANALYSIS_FILENAME, mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", use_container_width=True)
+            
+            # =====================================================================
+            #           INICIO DE LA CORRECCIÓN CLAVE 2 (BOTÓN DE DESCARGA ÚNICO)
+            # =====================================================================
+            # 1. Descargamos el contenido del archivo ANTES de mostrar el botón.
+            #    Gracias a la caché, esto será rápido en cargas sucesivas.
+            file_bytes_for_download = download_file_from_drive_cached(service, analysis_doc_id)
+
+            # 2. Usamos st.download_button directamente, que proporciona una experiencia de un solo clic.
+            st.download_button(
+                label="📄 Descargar Análisis Guardado",
+                data=file_bytes_for_download,
+                file_name=ANALYSIS_FILENAME,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                use_container_width=True
+            )
+            # =====================================================================
+            #           FIN DE LA CORRECCIÓN CLAVE 2
+            # =====================================================================
             
             col1, col2 = st.columns(2)
             with col1:
