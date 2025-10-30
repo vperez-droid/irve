@@ -1616,17 +1616,15 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
 # =============================================================================
 #           PÁGINA FASE 6: ENSAMBLAJE FINAL
 # =============================================================================
-# Pega este código en ui_pages.py, reemplazando la función phase_6_page antigua
-
 def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
-    st.markdown("<h3>FASE 6: Ensamblaje del Documento Final</h3>", unsafe_allow_html=True)
+    st.markdown("<h3>FASE 6: Ensamblaje y Pulido Final</h3>", unsafe_allow_html=True)
     
     selected_lot_text = "Análisis General"
     if st.session_state.get('selected_lot') and st.session_state.selected_lot != OPCION_ANALISIS_GENERAL:
         selected_lot_text = st.session_state.selected_lot
     
-    st.info(f"Ensamblando la memoria técnica para: **{selected_lot_text}**")
-    st.markdown("Este es el último paso. Se añadirá un índice y una introducción profesional al documento.")
+    st.info(f"Se generará la versión final para: **{selected_lot_text}**")
+    st.markdown("Este paso final unifica el documento, pule el texto para asegurar su coherencia y preserva todas las imágenes.")
     st.markdown("---")
 
     if not st.session_state.get("generated_doc_buffer"):
@@ -1636,53 +1634,67 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
             st.rerun()
         return
 
-    if not st.session_state.get("generated_structure"):
-        st.warning("No se ha encontrado la estructura del proyecto. Vuelve a una fase anterior para generarla.")
-        return
-
-    if st.button("🚀 Ensamblar Documento Final con Índice e Introducción", type="primary", use_container_width=True):
+    if st.button("🚀 Ensamblar y Pulir Documento Final", type="primary", use_container_width=True):
         try:
-            with st.spinner("Ensamblando la versión definitiva..."):
+            # --- INICIO DE LA NUEVA LÓGICA ---
+            
+            # PASO 6.1 y 6.2: Cargar y Desensamblar el borrador de la Fase 5
+            st.toast("Paso 1/5: Desensamblando documento y mapeando imágenes...")
+            with st.spinner("Analizando borrador inicial..."):
                 buffer_fase5 = st.session_state.generated_doc_buffer
-                buffer_fase5.seek(0)
-                documento_fase5 = docx.Document(buffer_fase5)
-                
-                texto_completo_original = "\n".join([p.text for p in documento_fase5.paragraphs if p.text.strip()])
-                
-                st.toast("Generando introducción estratégica...")
+                texto_original_con_placeholders, mapa_de_imagenes = desensamblar_docx(buffer_fase5)
+            
+            # PASO 6.3: Ejecutar el pase de cohesión y coherencia
+            st.toast("Paso 2/5: Mejorando cohesión y verificando coherencia del texto...")
+            with st.spinner("IA aplicando mejoras de cohesión y coherencia... (Esto puede tardar un poco)"):
                 idioma_seleccionado = st.session_state.get('project_language', 'Español')
+                prompt_cohesion_formateado = PROMPT_COHESION_FINAL_MEJORADO.format(idioma=idioma_seleccionado)
+                response_cohesion = model.generate_content([prompt_cohesion_formateado, texto_original_con_placeholders])
+                texto_cohesionado = limpiar_respuesta_final(response_cohesion.text)
+            
+            # PASO 6.4: Reensamblar el cuerpo del documento con las imágenes
+            st.toast("Paso 3/5: Reensamblando el documento con imágenes...")
+            with st.spinner("Reconstruyendo el cuerpo del documento..."):
+                cuerpo_del_documento = reensamblar_docx_con_imagenes(texto_cohesionado, mapa_de_imagenes)
                 
-                # <-- ¡CAMBIO CLAVE 1/2! Obtenemos el nombre de la empresa de la sesión.
+            # PASO 6.5: Generar y añadir elementos finales (Introducción e Índice)
+            st.toast("Paso 4/5: Generando introducción estratégica e índice...")
+            with st.spinner("Creando introducción e índice final..."):
+                # Generar introducción basada en el texto YA cohesionado
                 company_name = st.session_state.get('company_name', 'La UTE')
-                
-                # <-- ¡CAMBIO CLAVE 2/2! Lo pasamos al formatear el prompt de la introducción.
                 prompt_intro_formateado = PROMPT_GENERAR_INTRODUCCION.format(idioma=idioma_seleccionado, nombre_empresa=company_name)
-                
-                response_intro = model.generate_content([prompt_intro_formateado, texto_completo_original])
+                response_intro = model.generate_content([prompt_intro_formateado, texto_cohesionado])
                 introduccion_markdown = limpiar_respuesta_final(response_intro.text)
                 
-                st.toast("Creando documento final...")
+                # Crear el documento final y añadir todo en orden
                 documento_final = docx.Document()
                 estructura_memoria = st.session_state.generated_structure.get('estructura_memoria', [])
                 
+                # 1. Índice
                 generar_indice_word(documento_final, estructura_memoria)
                 documento_final.add_page_break()
+                
+                # 2. Introducción
                 documento_final.add_heading("Introducción", level=1)
                 agregar_markdown_a_word(documento_final, corregir_numeracion_markdown(introduccion_markdown))
                 documento_final.add_page_break()
                 
-                for element in documento_fase5.element.body:
+                # 3. Cuerpo del documento (ya cohesionado y con imágenes)
+                for element in cuerpo_del_documento.element.body:
                     documento_final.element.body.append(element)
-                    
+            
+            # PASO 6.6: Guardar el resultado final
+            st.toast("Paso 5/5: Guardando versión final...")
+            with st.spinner("Guardando documento final en buffer y Google Drive..."):
                 doc_io_final = io.BytesIO()
                 documento_final.save(doc_io_final)
                 doc_io_final.seek(0)
                 
                 st.session_state.refined_doc_buffer = doc_io_final
                 original_filename = st.session_state.generated_doc_filename
-                st.session_state.refined_doc_filename = original_filename.replace("Cuerpo_", "Version_Final_")
+                st.session_state.refined_doc_filename = original_filename.replace("Cuerpo_", "Version_Final_Pulida_")
                 
-                st.toast("Guardando versión final en Google Drive...")
+                # Guardar en Google Drive
                 service = st.session_state.drive_service
                 project_folder_id = st.session_state.selected_project['id']
                 active_lot_folder_id = get_or_create_lot_folder_id(service, project_folder_id, lot_name=st.session_state.get('selected_lot'))
@@ -1691,11 +1703,12 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
                 doc_io_final.type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 upload_file_to_drive(service, doc_io_final, active_lot_folder_id)
 
-                st.success("¡Documento final ensamblado y guardado en Drive!")
-                st.rerun()
+            st.success("¡Documento final pulido, ensamblado y guardado en Drive!")
+            st.rerun()
 
         except Exception as e:
             st.error(f"Ocurrió un error crítico durante el ensamblaje final: {e}")
+            st.exception(e) # Esto imprimirá el traceback completo para depuración
 
     if st.session_state.get("refined_doc_buffer"):
         st.balloons()
@@ -1714,7 +1727,6 @@ def phase_6_page(model, go_to_phase5, back_to_project_selection_and_cleanup):
         st.button("← Volver a Fase 5 (Redacción)", on_click=go_to_phase5, use_container_width=True)
     with col_nav2:
         st.button("✅ PROCESO FINALIZADO (Volver a selección de proyecto)", on_click=back_to_project_selection_and_cleanup, use_container_width=True, type="primary")
-
 
 
 
