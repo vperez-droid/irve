@@ -295,29 +295,21 @@ def wrap_html_fragment(html_fragment):
     <body>{html_fragment}</body></html>
     """
 
-def html_a_imagen(html_string):
+def html_a_imagen(html_string, output_filename="temp_image.png"):
     """
-    (VERSIÓN CORREGIDA)
-    Convierte una cadena de HTML en bytes de una imagen PNG, operando en memoria.
-    Devuelve los bytes de la imagen si tiene éxito, o None si falla.
+    Convierte una cadena de HTML en una imagen PNG usando wkhtmltoimage.
+    Devuelve la ruta del fichero si existe; None si falla.
     """
     try:
         path_wkhtmltoimage = os.popen('which wkhtmltoimage').read().strip()
-        if not path_wkhtmltoimage:
-            st.error("❌ 'wkhtmltoimage' no encontrado. Asegúrate de que 'wkhtmltopdf' está en tu archivo packages.txt.")
-            return None
         config = imgkit.config(wkhtmltoimage=path_wkhtmltoimage)
-        options = {'format': 'png', 'encoding': "UTF-8", 'width': '800', 'quiet': ''}
-        
-        # El cambio clave: output_path=False devuelve los bytes directamente
-        image_bytes = imgkit.from_string(html_string, False, config=config, options=options)
-        
-        return image_bytes
-        
+        options = {'format': 'png', 'encoding': 'UTF-8', 'width': '800', 'quiet': ''}
+
+        imgkit.from_string(html_string, output_filename, config=config, options=options)
+        return output_filename if os.path.exists(output_filename) else None
     except Exception as e:
         st.error(f"Error al convertir HTML a imagen: {e}")
         return None
-
 # =============================================================================
 #         ARQUITECTURA DE ANÁLISIS MULTIMODAL CON CACHÉ
 # =============================================================================
