@@ -845,7 +845,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
     # --- 3. Lógica de Clasificación y Subida Automática de Contexto ---
     st.subheader("Central de Documentos de Contexto")
-    # ... (Esta sección no cambia)
     with st.container(border=True):
         st.info("Sube aquí TODOS los documentos de apoyo (PDFs, Word con imágenes, etc.). La IA los analizará y asignará al subapartado correcto automáticamente.")
         context_files = st.file_uploader(
@@ -925,7 +924,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
     if st.session_state.classification_results:
         st.subheader("Resultados de la Última Clasificación")
-        # ... (Esta sección no cambia)
         with st.container(border=True):
             df_results = pd.DataFrame(st.session_state.classification_results)
             df_results.rename(columns={'filename': 'Archivo', 'destination': 'Subapartado Asignado'}, inplace=True)
@@ -934,7 +932,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 st.session_state.classification_results = []; st.rerun()
 
     # --- 4. Funciones de Lógica Interna (Callbacks) ---
-    # ... (Estas funciones de handle_*, ejecutar_*, etc., no cambian)
     def handle_confirm_regeneration(titulo, file_id_borrador, feedback):
         if not feedback.strip(): st.warning("Por favor, introduce tu feedback para la re-generación."); return
         with st.spinner(f"Re-generando '{titulo}' con tu feedback..."):
@@ -946,7 +943,12 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                 pliegos_en_drive = get_files_in_project(service, pliegos_folder_id)
                 idioma = st.session_state.get('project_language', 'Español')
                 contexto_lote_actual = get_lot_context()
-                prompt = PROMPT_CONSULTOR_REVISION.format(idioma=idioma, contexto_lote=contexto_lote_actual)
+                
+                # <-- ¡CAMBIO CLAVE 1/5! Obtenemos el nombre de la empresa
+                company_name = st.session_state.get('company_name', 'La UTE') 
+                
+                # <-- ¡CAMBIO CLAVE 2/5! Lo pasamos al formatear el prompt
+                prompt = PROMPT_CONSULTOR_REVISION.format(idioma=idioma, contexto_lote=contexto_lote_actual, nombre_empresa=company_name)
                 
                 contenido_ia = [
                     prompt, 
@@ -1001,10 +1003,10 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
             with st.spinner(f"Subiendo {len(files)} archivo(s) de contexto..."):
                 for file_obj in files: upload_file_to_drive(service, file_obj, destination_folder_id)
                 st.toast("Archivos de contexto añadidos."); st.rerun()
+    
     # --- 5. Renderizado de la Interfaz de Usuario ---
     st.markdown("---")
     st.subheader("Gestión de Guiones de Subapartados")
-    # ... (Toda la lógica de la UI para mostrar los guiones, los botones de generar, borrar, etc., no cambia)
     with st.spinner("Sincronizando guiones y archivos de contexto con Google Drive..."):
         guiones_folder_id = find_or_create_folder(service, "Guiones de Subapartados", parent_id=active_lot_folder_id)
         carpetas_existentes = {f['name']: f['id'] for f in get_files_in_project(service, guiones_folder_id) if f['mimeType'] == 'application/vnd.google-apps.folder'}
@@ -1039,6 +1041,9 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
 
                 credentials = get_credentials()
                 project_language = st.session_state.get('project_language', 'Español')
+                
+                # <-- ¡CAMBIO CLAVE 3/5! Obtenemos el nombre de la empresa ANTES del bucle
+                company_name = st.session_state.get('company_name', 'La UTE')
 
                 if not credentials:
                     st.error("Error de autenticación. No se puede iniciar la generación.")
@@ -1048,7 +1053,8 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                             executor.submit(
                                 ejecutar_generacion_con_gemini, 
                                 model, credentials, project_folder_id, active_lot_folder_id,
-                                matiz.get('subapartado'), matiz, "", project_language
+                                matiz.get('subapartado'), matiz, "", project_language,
+                                company_name # <-- ¡CAMBIO CLAVE 4/5! Pasamos el nombre a cada hilo
                             ): matiz for matiz in items_to_generate
                         }
                         for future in concurrent.futures.as_completed(future_to_matiz):
@@ -1124,13 +1130,16 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
                         with st.spinner(f"Generando borrador para '{subapartado_titulo}'..."):
                             credentials = get_credentials()
                             project_language = st.session_state.get('project_language', 'Español')
+                            company_name = st.session_state.get('company_name', 'La UTE') # <-- ¡CAMBIO CLAVE 5/5! Obtenemos y pasamos el nombre para la generación individual
+                            
                             if not credentials:
                                 st.error("Error de autenticación. Por favor, reinicia la sesión.")
                             else:
                                 success = ejecutar_generacion_con_gemini(
                                     model=model, credentials=credentials,
                                     project_folder_id=project_folder_id, active_lot_folder_id=active_lot_folder_id,
-                                    titulo=subapartado_titulo, indicaciones_completas=matiz, project_language=project_language
+                                    titulo=subapartado_titulo, indicaciones_completas=matiz, project_language=project_language,
+                                    company_name=company_name 
                                 )
                                 if success: st.rerun()
 
@@ -1141,8 +1150,6 @@ def phase_3_page(model, go_to_phase2_results, go_to_phase4):
         st.subheader("Finalizar Fase y Avanzar")
         st.info("Una vez que hayas generado y revisado todos los guiones necesarios, avanza a la siguiente fase para preparar los prompts detallados para la redacción final.")
         
-        # Este botón ahora solo se encarga de la navegación a la Fase 4.
-        # La lógica de 'on_click' se encarga de cambiar la página en st.session_state.
         st.button("Avanzar a Fase 4 (Preparación de Prompts) →", 
                         on_click=go_to_phase4, 
                         type="primary", 
