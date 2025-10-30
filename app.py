@@ -69,7 +69,8 @@ def back_to_project_selection_and_cleanup():
         'requisitos_extraidos', 'generated_structure', 'uploaded_pliegos', 
         'selected_project', 'generated_doc_buffer', 'refined_doc_buffer', 
         'generated_doc_filename', 'refined_doc_filename', 'project_language',
-        'detected_lotes', 'selected_lot' 
+        'detected_lotes', 'selected_lot',
+        'analysis_doc_id'  # <-- ¡AÑADE ESTA LÍNEA CRÍTICA!
     ]
     for key in keys_to_clear:
         if key in st.session_state:
