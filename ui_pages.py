@@ -1504,7 +1504,7 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
         progress_bar = st.progress(0, text=f"Configurando redacción con {MAX_WORKERS} workers...")
         resultados_ordenados = {tarea.get("prompt_id"): None for tarea in lista_de_prompts}
         
-        with st.spinner(f"Redactando {len(lista_de_prompts)} fragmentos... Esto puede tardar varios minutos (especialmente si hay esperas por límites de API)."):
+        with st.spinner(f"Redactando {len(lista_de_prompts)} fragmentos... Esto puede tardar varios minutos."):
             completed_count = 0
             with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                 future_to_id = {
@@ -1553,18 +1553,23 @@ def phase_5_page(model, go_to_phase4, go_to_phase6):
                 respuesta_ia_bruta = resultado['content']
                 es_html = ("HTML" in prompt_id.upper() or "VISUAL" in prompt_id.upper() or respuesta_ia_bruta.strip().startswith(('<!DOCTYPE html>', '<div', '<table')))
                 
+                # --- INICIO DE LA MODIFICACIÓN CLAVE ---
+                # Se ha cambiado la lógica para manejar la imagen en memoria y evitar corrupción.
                 if es_html:
                     html_puro = limpiar_respuesta_final(respuesta_ia_bruta)
-                    image_file = html_a_imagen(wrap_html_fragment(html_puro), f"temp_img_{prompt_id}.png")
-                    if image_file and os.path.exists(image_file):
-                        documento.add_picture(image_file, width=docx.shared.Inches(6.5))
-                        os.remove(image_file)
+                    image_bytes = html_a_imagen(wrap_html_fragment(html_puro)) # Llama a la nueva función
+                    
+                    if image_bytes:
+                        # Añade la imagen desde la memoria (bytes)
+                        documento.add_picture(io.BytesIO(image_bytes), width=docx.shared.Inches(6.5))
                     else:
                         documento.add_paragraph("[ERROR AL GENERAR IMAGEN DESDE HTML]")
                 else:
                     texto_limpio = limpiar_respuesta_final(respuesta_ia_bruta)
                     texto_corregido = corregir_numeracion_markdown(texto_limpio)
                     agregar_markdown_a_word(documento, texto_corregido)
+                # --- FIN DE LA MODIFICACIÓN CLAVE ---
+                    
             else:
                 error_msg = resultado.get('error', 'Error desconocido') if resultado else 'Resultado no encontrado'
                 p = documento.add_paragraph()
